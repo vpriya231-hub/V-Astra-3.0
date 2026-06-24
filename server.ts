@@ -172,12 +172,41 @@ async function startServer() {
       }
 
       // Prioritized list of model candidates to provide high-availability and handle transient demand spikes/503 errors
-      const modelCandidates = ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-1.5-flash"];
+      // Strictly excludes deprecated models like gemini-1.5-flash
+      const modelCandidates = ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite"];
       let response = null;
       let lastError: any = null;
 
       // Helper for sleep/backoff
       const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+      // Robust check for error types (rate limits, quotas, transient service faults)
+      function classifyError(err: any) {
+        if (!err) return { isQuota: false, isTransient: false };
+        const errStr = (
+          (err.message || "") + " " + 
+          (err.status || "") + " " + 
+          (err.code || "") + " " + 
+          (typeof err === "object" ? JSON.stringify(err) : String(err))
+        ).toLowerCase();
+
+        const isQuota = errStr.includes("429") || 
+                        errStr.includes("quota") || 
+                        errStr.includes("exhausted") || 
+                        errStr.includes("limit") || 
+                        errStr.includes("resource_exhausted") ||
+                        errStr.includes("rate");
+
+        const isTransient = errStr.includes("503") || 
+                            errStr.includes("500") ||
+                            errStr.includes("temporary") || 
+                            errStr.includes("unavailable") || 
+                            errStr.includes("overloaded") ||
+                            errStr.includes("busy") ||
+                            errStr.includes("connect");
+
+        return { isQuota, isTransient };
+      }
 
       // Attempt generation with active config (potentially with grounding search)
       async function attemptGeneration(currentConfig: any) {
@@ -198,23 +227,15 @@ async function startServer() {
               }
             } catch (err: any) {
               lastError = err;
+              const { isQuota, isTransient } = classifyError(err);
               const errMsg = err?.message || String(err);
-              const isRateLimitOrQuota = errMsg.includes("429") || 
-                                         errMsg.includes("quota") || 
-                                         errMsg.includes("exhausted") || 
-                                         errMsg.includes("limit") ||
-                                         errMsg.includes("RESOURCE_EXHAUSTED");
-              const isTransient = errMsg.includes("503") || 
-                                  errMsg.includes("temporary") || 
-                                  errMsg.includes("UNAVAILABLE") ||
-                                  errMsg.includes("overloaded");
 
               console.warn(`[Gemini API Warning] Model '${modelName}' failed: ${errMsg}`);
 
-              if ((isRateLimitOrQuota || isTransient) && retryCount < maxRetries) {
+              if ((isQuota || isTransient) && retryCount < maxRetries) {
                 retryCount++;
-                const backoffTime = retryCount * 800; // 800ms, 1600ms backoff
-                console.log(`[Gemini API] Retrying '${modelName}' in ${backoffTime}ms due to quota/rate limit or transient load...`);
+                const backoffTime = retryCount * 1000; // 1s, 2s backoff
+                console.log(`[Gemini API] Retrying '${modelName}' in ${backoffTime}ms due to transient load or speed limits...`);
                 await sleep(backoffTime);
               } else {
                 break; // Try next model candidate
@@ -241,9 +262,7 @@ async function startServer() {
         responseText = response.text;
       } else {
         // Ultimate user-friendly elegant conversational fallback instead of hard crash
-        const isQuotaExceeded = lastError?.message?.includes("quota") || 
-                                lastError?.message?.includes("429") || 
-                                lastError?.message?.includes("RESOURCE_EXHAUSTED");
+        const { isQuota: isQuotaExceeded } = classifyError(lastError);
 
         console.error("[Gemini API Error] All candidate models and search fallbacks failed. Presenting elegant conversation fallback.");
 
