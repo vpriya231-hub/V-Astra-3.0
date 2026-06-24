@@ -16,6 +16,8 @@ export interface UserProfile {
   name: string;
   onboarded: boolean;
   joinedAt: string;
+  primary_language?: string;
+  secondary_language?: string;
 }
 
 export interface AppSettings {

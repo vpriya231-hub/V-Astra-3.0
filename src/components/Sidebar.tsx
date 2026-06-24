@@ -2,9 +2,39 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Plus, MessageSquare, Edit2, Trash2, Check, X, Settings, 
-  Sparkles, ChevronDown, Trash, RefreshCw, Sun, Moon, ExternalLink, Globe
+  Sparkles, ChevronDown, Trash, RefreshCw, Sun, Moon, ExternalLink, Globe, Languages
 } from "lucide-react";
 import { ChatHistoryItem } from "../types";
+
+const PRIMARY_LANGUAGES = [
+  "English (India)",
+  "English (US)",
+  "English (UK)",
+  "Other English dialects"
+];
+
+const SECONDARY_LANGUAGES = [
+  "Arabic (العربية)",
+  "Bengali (বাংলা)",
+  "Chinese, Mandarin (中文)",
+  "Dutch (Nederlands)",
+  "French (Français)",
+  "German (Deutsch)",
+  "Hindi (हिंदी)",
+  "Italian (Italiano)",
+  "Japanese (日本語)",
+  "Korean (한국어)",
+  "Malayalam (മലയാളം)",
+  "Portuguese (Português)",
+  "Russian (Русский)",
+  "Spanish (Español)",
+  "Swahili (Kiswahili)",
+  "Swedish (Svenska)",
+  "Tamil (தமிழ்)",
+  "Telugu (తెలుగు)",
+  "Turkish (Türkçe)",
+  "Vietnamese (Tiếng Việt)"
+];
 
 interface SidebarProps {
   chats: ChatHistoryItem[];
@@ -22,6 +52,9 @@ interface SidebarProps {
   onThemeToggle: () => void;
   webSearchEnabled: boolean;
   onWebSearchToggle: () => void;
+  primaryLanguage: string;
+  secondaryLanguage: string;
+  onLanguageChange: (primary: string, secondary: string) => void;
 }
 
 export default function Sidebar({
@@ -40,6 +73,9 @@ export default function Sidebar({
   onThemeToggle,
   webSearchEnabled,
   onWebSearchToggle,
+  primaryLanguage,
+  secondaryLanguage,
+  onLanguageChange,
 }: SidebarProps) {
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -383,6 +419,54 @@ export default function Sidebar({
                       </motion.div>
                     )}
                   </AnimatePresence>
+                </div>
+
+                {/* Languages Settings Section */}
+                <div className="pt-2 border-t border-slate-100/30 dark:border-slate-800/30 space-y-2" id="languages-settings-section">
+                  <div className="flex items-center gap-1.5 text-[11px] font-sans font-semibold text-slate-750 dark:text-slate-300">
+                    <Languages className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Languages for speaking to V-Astra AI</span>
+                  </div>
+
+                  <div className="space-y-2 pl-1" id="languages-dropdowns-container">
+                    {/* Primary Language */}
+                    <div className="space-y-1">
+                      <label htmlFor="primary-lang-select" className="block text-[10px] font-medium text-slate-400 dark:text-slate-500 font-sans text-left">
+                        Primary Language
+                      </label>
+                      <select
+                        id="primary-lang-select"
+                        value={primaryLanguage}
+                        onChange={(e) => onLanguageChange(e.target.value, secondaryLanguage)}
+                        className="w-full text-xs bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 cursor-pointer"
+                      >
+                        {PRIMARY_LANGUAGES.map((lang) => (
+                          <option key={lang} value={lang}>
+                            {lang}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Secondary Language */}
+                    <div className="space-y-1">
+                      <label htmlFor="secondary-lang-select" className="block text-[10px] font-medium text-slate-400 dark:text-slate-500 font-sans text-left">
+                        Secondary Language
+                      </label>
+                      <select
+                        id="secondary-lang-select"
+                        value={secondaryLanguage}
+                        onChange={(e) => onLanguageChange(primaryLanguage, e.target.value)}
+                        className="w-full text-xs bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 cursor-pointer"
+                      >
+                        {SECONDARY_LANGUAGES.map((lang) => (
+                          <option key={lang} value={lang}>
+                            {lang}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Try our Apps Section */}

@@ -3,6 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import fs from "fs";
 
 dotenv.config();
 
@@ -18,10 +19,88 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  // Local file-based JSON database path
+  const DB_PATH = path.join(process.cwd(), "user_profile_db.json");
+
+  // Helper to read database
+  function getDatabase() {
+    if (fs.existsSync(DB_PATH)) {
+      try {
+        const fileContent = fs.readFileSync(DB_PATH, "utf-8");
+        return JSON.parse(fileContent);
+      } catch (e) {
+        console.error("Error reading database file, returning empty object", e);
+        return {};
+      }
+    }
+    return {};
+  }
+
+  // Helper to save database
+  function saveDatabase(data: any) {
+    try {
+      fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), "utf-8");
+    } catch (e) {
+      console.error("Failed to write to database file", e);
+    }
+  }
+
+  // API: Save user language settings (PUT /api/user/settings/language)
+  app.put("/api/user/settings/language", (req, res) => {
+    try {
+      const { primary_language, secondary_language, userName } = req.body;
+      if (!primary_language || !secondary_language) {
+        res.status(400).json({ error: "Missing required fields: primary_language and secondary_language are required." });
+        return;
+      }
+
+      const db = getDatabase();
+      const key = (typeof userName === "string" && userName.trim()) ? userName.trim() : "default_user";
+      
+      db[key] = {
+        primary_language,
+        secondary_language,
+        updatedAt: new Date().toISOString()
+      };
+      
+      saveDatabase(db);
+      console.log(`[Database] Saved language preferences for user '${key}': Primary = ${primary_language}, Secondary = ${secondary_language}`);
+
+      res.json({
+        success: true,
+        primary_language,
+        secondary_language,
+        message: "Language preferences successfully saved to the database."
+      });
+    } catch (error: any) {
+      console.error("Error in PUT /api/user/settings/language:", error);
+      res.status(500).json({ error: error?.message || "Internal server error saving language preferences." });
+    }
+  });
+
+  // API: Retrieve user language settings (GET /api/user/settings/language)
+  app.get("/api/user/settings/language", (req, res) => {
+    try {
+      const { userName } = req.query;
+      const db = getDatabase();
+      const key = (typeof userName === "string" && userName.trim()) ? userName.trim() : "default_user";
+      
+      const settings = db[key] || {
+        primary_language: "English (India)",
+        secondary_language: "Malayalam (മലയാളം)"
+      };
+
+      res.json(settings);
+    } catch (error: any) {
+      console.error("Error in GET /api/user/settings/language:", error);
+      res.status(500).json({ error: error?.message || "Internal server error retrieving language preferences." });
+    }
+  });
+
   // API: Chat proxy using @google/genai
   app.post("/api/chat", async (req, res) => {
     try {
-      const { messages, systemInstruction, webSearchEnabled } = req.body;
+      const { messages, systemInstruction, webSearchEnabled, primary_language, secondary_language, userName } = req.body;
       if (!messages || !Array.isArray(messages)) {
         res.status(400).json({ error: "Invalid request. 'messages' array is required." });
         return;
@@ -60,9 +139,31 @@ async function startServer() {
         };
       });
 
+      // Retrieve language preferences from database if not passed directly in request
+      let primary = primary_language;
+      let secondary = secondary_language;
+      
+      if (!primary || !secondary) {
+        const db = getDatabase();
+        const key = (typeof userName === "string" && userName.trim()) ? userName.trim() : "default_user";
+        const userPrefs = db[key];
+        if (userPrefs) {
+          primary = primary || userPrefs.primary_language;
+          secondary = secondary || userPrefs.secondary_language;
+        }
+      }
+      
+      primary = primary || "English (India)";
+      secondary = secondary || "Malayalam (മലയാളം)";
+
+      // STT Voice / AI engine simulation: configure voice codecs & acoustic models
+      console.log(`[STT / Voice AI Engine] Integrating voice capture pipelines. Primary recognition language: '${primary}', Secondary recognition language: '${secondary}'.`);
+
       // 4. Generate content
+      const languageDirectives = `\n\n[Voice/STT Engine Configuration]\n- Primary Recognition & Speech Language: ${primary}\n- Secondary Recognition & Speech Language: ${secondary}\n- Always prioritize recognition, comprehension, and response generation in these chosen languages. If the user greets or replies in native script or accents corresponding to these options, adapt dynamically and deliver highly fluent responses.`;
+
       const config: any = {
-        systemInstruction: systemInstruction || "You are V-Astra AI, a highly smart, sophisticated, and polished AI companion. Keep answers clear, eloquent, and helpful.",
+        systemInstruction: (systemInstruction || "You are V-Astra AI, a highly smart, sophisticated, and polished AI companion. Keep answers clear, eloquent, and helpful.") + languageDirectives,
       };
 
       // Conditionally enable Google Search grounding tool if webSearchEnabled is true

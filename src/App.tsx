@@ -9,14 +9,25 @@ export default function App() {
   // 1. Core Local Storage States
   const [profile, setProfile] = useState<UserProfile>(() => {
     const saved = localStorage.getItem("v_astra_user_profile");
+    const defaultProfile = {
+      name: "",
+      onboarded: false,
+      joinedAt: "",
+      primary_language: "English (India)",
+      secondary_language: "Malayalam (മലയാളം)",
+    };
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return {
+          ...defaultProfile,
+          ...parsed,
+        };
       } catch (e) {
         // Fallback
       }
     }
-    return { name: "", onboarded: false, joinedAt: "" };
+    return defaultProfile;
   });
 
   const [chats, setChats] = useState<ChatHistoryItem[]>(() => {
@@ -109,11 +120,76 @@ export default function App() {
       name,
       onboarded: true,
       joinedAt: new Date().toISOString(),
+      primary_language: "English (India)",
+      secondary_language: "Malayalam (മലയാളം)",
     });
   };
 
+  // Synchronize/Fetch saved language preferences from the backend database when user is loaded
+  useEffect(() => {
+    if (profile.onboarded && profile.name) {
+      const fetchLanguageSettings = async () => {
+        try {
+          const response = await fetch(`/api/user/settings/language?userName=${encodeURIComponent(profile.name)}`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.primary_language && data.secondary_language) {
+              setProfile((prev) => ({
+                ...prev,
+                primary_language: data.primary_language,
+                secondary_language: data.secondary_language,
+              }));
+            }
+          }
+        } catch (err) {
+          console.error("Error fetching language settings from database:", err);
+        }
+      };
+      fetchLanguageSettings();
+    }
+  }, [profile.onboarded, profile.name]);
+
+  const handleLanguageChange = async (primary: string, secondary: string) => {
+    // 1. Update local state
+    setProfile((prev) => ({
+      ...prev,
+      primary_language: primary,
+      secondary_language: secondary,
+    }));
+
+    // 2. Securely save user language preferences to the backend database
+    try {
+      const response = await fetch("/api/user/settings/language", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          primary_language: primary,
+          secondary_language: secondary,
+          userName: profile.name,
+        }),
+      });
+
+      if (!response.ok) {
+        console.error("Failed to save language settings to database API");
+      } else {
+        const data = await response.json();
+        console.log("Language preferences saved to database:", data);
+      }
+    } catch (err) {
+      console.error("Error communicating with server language API:", err);
+    }
+  };
+
   const handleResetUser = () => {
-    setProfile({ name: "", onboarded: false, joinedAt: "" });
+    setProfile({
+      name: "",
+      onboarded: false,
+      joinedAt: "",
+      primary_language: "English (India)",
+      secondary_language: "Malayalam (മലയാളം)",
+    });
     setActiveChatId(null);
     setChats([]);
     setApiKey("");
@@ -231,6 +307,9 @@ export default function App() {
           messages: updatedMessages,
           systemInstruction,
           webSearchEnabled,
+          primary_language: profile.primary_language || "English (India)",
+          secondary_language: profile.secondary_language || "Malayalam (മലയാളം)",
+          userName: profile.name,
         }),
       });
 
@@ -306,6 +385,9 @@ export default function App() {
         onThemeToggle={() => setTheme(theme === "light" ? "dark" : "light")}
         webSearchEnabled={webSearchEnabled}
         onWebSearchToggle={() => setWebSearchEnabled(!webSearchEnabled)}
+        primaryLanguage={profile.primary_language || "English (India)"}
+        secondaryLanguage={profile.secondary_language || "Malayalam (മലയാളം)"}
+        onLanguageChange={handleLanguageChange}
       />
 
       {/* Main Interactive Screen Segment */}
