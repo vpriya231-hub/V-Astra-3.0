@@ -21,7 +21,7 @@ async function startServer() {
   // API: Chat proxy using @google/genai
   app.post("/api/chat", async (req, res) => {
     try {
-      const { messages, systemInstruction } = req.body;
+      const { messages, systemInstruction, webSearchEnabled } = req.body;
       if (!messages || !Array.isArray(messages)) {
         res.status(400).json({ error: "Invalid request. 'messages' array is required." });
         return;
@@ -61,12 +61,19 @@ async function startServer() {
       });
 
       // 4. Generate content
+      const config: any = {
+        systemInstruction: systemInstruction || "You are V-Astra AI, a highly smart, sophisticated, and polished AI companion. Keep answers clear, eloquent, and helpful.",
+      };
+
+      // Conditionally enable Google Search grounding tool if webSearchEnabled is true
+      if (webSearchEnabled === true) {
+        config.tools = [{ googleSearch: {} }];
+      }
+
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents,
-        config: {
-          systemInstruction: systemInstruction || "You are V-Astra AI, a highly smart, sophisticated, and polished AI companion. Keep answers clear, eloquent, and helpful.",
-        },
+        config,
       });
 
       res.json({ text: response.text });

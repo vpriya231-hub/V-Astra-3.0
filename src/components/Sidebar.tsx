@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Plus, MessageSquare, Edit2, Trash2, Check, X, Settings, 
-  Sparkles, ChevronDown, Trash, RefreshCw, Sun, Moon, ExternalLink
+  Sparkles, ChevronDown, Trash, RefreshCw, Sun, Moon, ExternalLink, Globe
 } from "lucide-react";
 import { ChatHistoryItem } from "../types";
 
@@ -20,6 +20,8 @@ interface SidebarProps {
   onResetUser: () => void;
   theme: "light" | "dark";
   onThemeToggle: () => void;
+  webSearchEnabled: boolean;
+  onWebSearchToggle: () => void;
 }
 
 export default function Sidebar({
@@ -36,10 +38,13 @@ export default function Sidebar({
   onResetUser,
   theme,
   onThemeToggle,
+  webSearchEnabled,
+  onWebSearchToggle,
 }: SidebarProps) {
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  const [showCapabilities, setShowCapabilities] = useState(false);
 
   // Chronological Grouping of Chats
   const getChronologicalGroups = () => {
@@ -329,6 +334,55 @@ export default function Sidebar({
                       </>
                     )}
                   </button>
+                </div>
+
+                {/* Capabilities Option in the Settings menu */}
+                <div className="pt-2 border-t border-slate-100/30 dark:border-slate-800/30 space-y-1.5" id="capabilities-section">
+                  <button
+                    onClick={() => setShowCapabilities(!showCapabilities)}
+                    className="w-full flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-sans hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                    id="capabilities-btn"
+                  >
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">Capabilities</span>
+                    <ChevronDown className={`w-3.5 h-3.5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${showCapabilities ? "rotate-180" : ""}`} />
+                  </button>
+
+                  <AnimatePresence initial={false}>
+                    {showCapabilities && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden space-y-2 pt-1 pb-1 pl-1"
+                        id="capabilities-expanded-content"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-xs text-slate-750 dark:text-slate-200 font-medium">
+                            <Globe className="w-3.5 h-3.5 text-indigo-500" />
+                            <span>Web search</span>
+                          </div>
+                          {/* Standard high quality toggle button */}
+                          <button
+                            onClick={onWebSearchToggle}
+                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                              webSearchEnabled ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+                            }`}
+                            id="web-search-toggle-switch"
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                webSearchEnabled ? "translate-x-4" : "translate-x-0"
+                              }`}
+                            />
+                          </button>
+                        </div>
+                        <p className="text-[10px] leading-normal text-slate-500 dark:text-slate-400 font-sans text-left">
+                          V Astra will automatically search the web when it determines it needs current information.
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 {/* Try our Apps Section */}

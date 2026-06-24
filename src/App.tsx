@@ -48,6 +48,10 @@ export default function App() {
     return (localStorage.getItem("v_astra_theme") as "light" | "dark") || "light";
   });
   const [isReturningUser, setIsReturningUser] = useState(false);
+  const [webSearchEnabled, setWebSearchEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem("v_astra_web_search_enabled");
+    return saved !== null ? saved === "true" : true;
+  });
 
   useEffect(() => {
     localStorage.setItem("v_astra_theme", theme);
@@ -57,6 +61,10 @@ export default function App() {
       document.documentElement.classList.remove("dark");
     }
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem("v_astra_web_search_enabled", String(webSearchEnabled));
+  }, [webSearchEnabled]);
 
   useEffect(() => {
     if (profile.onboarded) {
@@ -111,12 +119,14 @@ export default function App() {
     setApiKey("");
     setIsReturningUser(false);
     setTheme("light");
+    setWebSearchEnabled(true);
     localStorage.removeItem("v_astra_user_profile");
     localStorage.removeItem("v_astra_chats");
     localStorage.removeItem("v_astra_api_key");
     localStorage.removeItem("v_astra_active_chat_id");
     localStorage.removeItem("v_astra_is_returning");
     localStorage.removeItem("v_astra_theme");
+    localStorage.removeItem("v_astra_web_search_enabled");
     sessionStorage.removeItem("v_astra_session_loaded");
   };
 
@@ -220,6 +230,7 @@ export default function App() {
         body: JSON.stringify({
           messages: updatedMessages,
           systemInstruction,
+          webSearchEnabled,
         }),
       });
 
@@ -293,6 +304,8 @@ export default function App() {
         onResetUser={handleResetUser}
         theme={theme}
         onThemeToggle={() => setTheme(theme === "light" ? "dark" : "light")}
+        webSearchEnabled={webSearchEnabled}
+        onWebSearchToggle={() => setWebSearchEnabled(!webSearchEnabled)}
       />
 
       {/* Main Interactive Screen Segment */}
