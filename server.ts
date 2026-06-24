@@ -171,11 +171,33 @@ async function startServer() {
         config.tools = [{ googleSearch: {} }];
       }
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents,
-        config,
-      });
+      // Prioritized list of model candidates to provide high-availability and handle transient demand spikes/503 errors
+      const modelCandidates = ["gemini-2.5-flash", "gemini-3.5-flash"];
+      let response = null;
+      let lastError: any = null;
+
+      for (const modelName of modelCandidates) {
+        try {
+          console.log(`[Gemini API] Attempting content generation with model: '${modelName}'`);
+          response = await ai.models.generateContent({
+            model: modelName,
+            contents,
+            config,
+          });
+          if (response) {
+            console.log(`[Gemini API] Success using model: '${modelName}'`);
+            break;
+          }
+        } catch (err: any) {
+          console.warn(`[Gemini API] Model '${modelName}' failed or is experiencing high demand:`, err?.message || err);
+          lastError = err;
+        }
+      }
+
+      if (!response) {
+        // If all candidate models fail, throw the last error
+        throw lastError || new Error("All candidate Gemini models are currently busy or unavailable.");
+      }
 
       res.json({ text: response.text });
     } catch (error: any) {
