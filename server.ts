@@ -172,34 +172,102 @@ async function startServer() {
       }
 
       // Prioritized list of model candidates to provide high-availability and handle transient demand spikes/503 errors
-      const modelCandidates = ["gemini-2.5-flash", "gemini-3.5-flash"];
+      const modelCandidates = ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-1.5-flash"];
       let response = null;
       let lastError: any = null;
 
-      for (const modelName of modelCandidates) {
-        try {
-          console.log(`[Gemini API] Attempting content generation with model: '${modelName}'`);
-          response = await ai.models.generateContent({
-            model: modelName,
-            contents,
-            config,
-          });
-          if (response) {
-            console.log(`[Gemini API] Success using model: '${modelName}'`);
-            break;
+      // Helper for sleep/backoff
+      const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+      // Attempt generation with active config (potentially with grounding search)
+      async function attemptGeneration(currentConfig: any) {
+        for (const modelName of modelCandidates) {
+          let retryCount = 0;
+          const maxRetries = 2;
+          
+          while (retryCount <= maxRetries) {
+            try {
+              console.log(`[Gemini API] Attempting generation. Model: '${modelName}' (Attempt ${retryCount + 1}/${maxRetries + 1})`);
+              const resObj = await ai.models.generateContent({
+                model: modelName,
+                contents,
+                config: currentConfig,
+              });
+              if (resObj && resObj.text) {
+                return resObj;
+              }
+            } catch (err: any) {
+              lastError = err;
+              const errMsg = err?.message || String(err);
+              const isRateLimitOrQuota = errMsg.includes("429") || 
+                                         errMsg.includes("quota") || 
+                                         errMsg.includes("exhausted") || 
+                                         errMsg.includes("limit") ||
+                                         errMsg.includes("RESOURCE_EXHAUSTED");
+              const isTransient = errMsg.includes("503") || 
+                                  errMsg.includes("temporary") || 
+                                  errMsg.includes("UNAVAILABLE") ||
+                                  errMsg.includes("overloaded");
+
+              console.warn(`[Gemini API Warning] Model '${modelName}' failed: ${errMsg}`);
+
+              if ((isRateLimitOrQuota || isTransient) && retryCount < maxRetries) {
+                retryCount++;
+                const backoffTime = retryCount * 800; // 800ms, 1600ms backoff
+                console.log(`[Gemini API] Retrying '${modelName}' in ${backoffTime}ms due to quota/rate limit or transient load...`);
+                await sleep(backoffTime);
+              } else {
+                break; // Try next model candidate
+              }
+            }
           }
-        } catch (err: any) {
-          console.warn(`[Gemini API] Model '${modelName}' failed or is experiencing high demand:`, err?.message || err);
-          lastError = err;
+        }
+        return null;
+      }
+
+      // First run: attempt with requested config (including Google Search if enabled)
+      response = await attemptGeneration(config);
+
+      // Second run: If it failed and webSearchEnabled was true, auto fallback to standard text generation (no search tools)
+      if (!response && webSearchEnabled === true) {
+        console.warn("[Gemini API Fallback] Generation failed with web search enabled. Attempting fallback generation without Web Search grounding...");
+        const fallbackConfig = { ...config };
+        delete fallbackConfig.tools; // Strip googleSearch tools
+        response = await attemptGeneration(fallbackConfig);
+      }
+
+      let responseText = "";
+      if (response && response.text) {
+        responseText = response.text;
+      } else {
+        // Ultimate user-friendly elegant conversational fallback instead of hard crash
+        const isQuotaExceeded = lastError?.message?.includes("quota") || 
+                                lastError?.message?.includes("429") || 
+                                lastError?.message?.includes("RESOURCE_EXHAUSTED");
+
+        console.error("[Gemini API Error] All candidate models and search fallbacks failed. Presenting elegant conversation fallback.");
+
+        if (isQuotaExceeded) {
+          responseText = `### ⚠️ Service Notice: High Demand & Quota Limit
+
+Hello! I am **V-Astra AI**. It appears that the primary Gemini AI API is currently experiencing a temporary **quota limit (Rate Limit / Resource Exhausted)**.
+
+To help resume our conversation smoothly, please try the following steps:
+1. **Disable Web Search** — Grounding with Google Search utilizes a separate query quota which is highly limited on free developer channels. Toggling this off in the sidebar settings usually resolves the issue.
+2. **Wait a few moments** — Transient quota restrictions and speed limits typically refresh every 60 seconds.
+3. If you have registered a custom **API Key** in the settings, please double-check that it is valid and has billing active.
+
+*I am ready to resume our normal conversational stream as soon as the API limits clear. Please feel free to send another message in a moment!*`;
+        } else {
+          responseText = `### ⚠️ Connection Interrupted
+
+Hello! I am **V-Astra AI**. I was unable to establish a secure connection with the Gemini server due to a temporary network issue or service overload (503 Service Unavailable).
+
+Please try resending your message in a few moments. Our connection should restore shortly!`;
         }
       }
 
-      if (!response) {
-        // If all candidate models fail, throw the last error
-        throw lastError || new Error("All candidate Gemini models are currently busy or unavailable.");
-      }
-
-      res.json({ text: response.text });
+      res.json({ text: responseText });
     } catch (error: any) {
       console.error("Gemini API Error:", error);
       res.status(500).json({ 
