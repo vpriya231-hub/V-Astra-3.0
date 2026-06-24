@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Plus, MessageSquare, Edit2, Trash2, Check, X, Settings, 
-  Sparkles, ChevronDown, Trash, RefreshCw, Sun, Moon
+  Sparkles, ChevronDown, Trash, RefreshCw, Sun, Moon, ExternalLink
 } from "lucide-react";
 import { ChatHistoryItem } from "../types";
 
@@ -329,6 +329,51 @@ export default function Sidebar({
                       </>
                     )}
                   </button>
+                </div>
+
+                {/* Try our Apps Section */}
+                <div className="pt-2.5 border-t border-slate-100/30 dark:border-slate-800/30 space-y-1.5" id="try-our-apps-section">
+                  <div className="flex items-center gap-1.5 text-[10px] font-sans font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">
+                    <Sparkles className="w-3 h-3 text-indigo-500" />
+                    <span>Try our Apps</span>
+                  </div>
+                  
+                  {/* V-Trans App Link */}
+                  <a
+                    href="https://play.google.com/store/apps/details?id=com.vastra.vtrans"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex flex-col p-2 rounded-xl border border-slate-100/70 dark:border-slate-800/50 bg-white/40 dark:bg-slate-950/20 hover:bg-white/85 dark:hover:bg-slate-900/40 hover:border-slate-200/60 dark:hover:border-slate-750 transition-all duration-200 cursor-pointer group shadow-sm text-left decoration-none"
+                    id="app-vtrans"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-sans font-semibold text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                        V-Trans
+                      </span>
+                      <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-indigo-500 transition-colors" />
+                    </div>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 font-sans mt-0.5">
+                      Voice & Text Translator
+                    </span>
+                  </a>
+
+                  {/* Vocalix Coming Soon App */}
+                  <div
+                    className="flex flex-col p-2 rounded-xl border border-dashed border-slate-200 dark:border-slate-800/80 bg-slate-50/30 dark:bg-slate-900/10 text-left"
+                    id="app-vocalix"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-sans font-semibold text-slate-400 dark:text-slate-500">
+                        Vocalix
+                      </span>
+                      <span className="text-[9px] font-sans px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 font-medium">
+                        Coming Soon
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-sans mt-0.5">
+                      Malayalam AI Voice Over
+                    </span>
+                  </div>
                 </div>
 
                 {/* Reset User Profile Action */}
