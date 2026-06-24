@@ -1,0 +1,6 @@
+{
+  "name": "V-Astra AI Companion",
+  "description": "V-Astra AI is a clean, minimalist, and modern AI chat assistant styled with a premium Liquid Glass effect sidebar and structured onboarding.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
