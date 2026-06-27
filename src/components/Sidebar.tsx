@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   Plus, MessageSquare, Edit2, Trash2, Check, X, Settings, 
   Sparkles, ChevronDown, Trash, RefreshCw, Sun, Moon, ExternalLink, Globe, Languages,
-  Search
+  Search, Star
 } from "lucide-react";
 import { ChatHistoryItem } from "../types";
 
@@ -56,6 +56,7 @@ interface SidebarProps {
   primaryLanguage: string;
   secondaryLanguage: string;
   onLanguageChange: (primary: string, secondary: string) => void;
+  onOpenRatingModal: () => void;
 }
 
 export default function Sidebar({
@@ -77,6 +78,7 @@ export default function Sidebar({
   primaryLanguage,
   secondaryLanguage,
   onLanguageChange,
+  onOpenRatingModal,
 }: SidebarProps) {
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -579,6 +581,37 @@ export default function Sidebar({
                       Malayalam AI Voice Over
                     </span>
                   </div>
+                </div>
+
+                {/* Support V-Astra / Rate App Section */}
+                <div className="pt-2.5 border-t border-slate-100/30 dark:border-slate-800/30 space-y-1.5" id="rate-app-section">
+                  <div className="flex items-center gap-1.5 text-[10px] font-sans font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">
+                    <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+                    <span>Support V-Astra</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      onOpenRatingModal();
+                    }}
+                    className="w-full flex flex-col p-2 rounded-xl border border-slate-100/70 dark:border-slate-800/50 bg-white/40 dark:bg-slate-950/20 hover:bg-white/85 dark:hover:bg-slate-900/40 hover:border-slate-200/60 dark:hover:border-slate-750 transition-all duration-200 cursor-pointer group shadow-sm text-left"
+                    id="rate-app-trigger-card"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-sans font-semibold text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                        Rate V-Astra AI
+                      </span>
+                      <div className="flex items-center gap-0.5">
+                        <Star className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
+                        <Star className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
+                        <Star className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
+                        <Star className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
+                        <Star className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 font-sans mt-0.5">
+                      Love using V-Astra? Tap here to rate us on the Play Store!
+                    </span>
+                  </button>
                 </div>
 
                 {/* Reset User Profile Action */}

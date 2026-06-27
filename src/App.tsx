@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import Onboarding from "./components/Onboarding";
 import Sidebar from "./components/Sidebar";
 import ChatArea from "./components/ChatArea";
+import RatingModal from "./components/RatingModal";
 import { ChatHistoryItem, Message, UserProfile } from "./types";
 import { Sparkles } from "lucide-react";
 
@@ -53,6 +54,7 @@ export default function App() {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [ratingModalOpen, setRatingModalOpen] = useState(false);
 
   // Theme & Session-based Greeting
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -89,6 +91,19 @@ export default function App() {
         if (wasReturning) {
           setIsReturningUser(true);
         }
+      }
+    }
+  }, [profile.onboarded]);
+
+  // Automatic Delay Trigger for Rating Modal (12 seconds after onboarded load)
+  useEffect(() => {
+    if (profile.onboarded) {
+      const currentRatingStatus = localStorage.getItem("v_astra_rating_status");
+      if (!currentRatingStatus) {
+        const timer = setTimeout(() => {
+          setRatingModalOpen(true);
+        }, 12000); // 12 seconds delay
+        return () => clearTimeout(timer);
       }
     }
   }, [profile.onboarded]);
@@ -335,6 +350,14 @@ export default function App() {
             : chat
         )
       );
+
+      // Trigger rating modal after a successful conversation turn if not yet rated/dismissed
+      const currentRatingStatus = localStorage.getItem("v_astra_rating_status");
+      if (!currentRatingStatus && (updatedMessages.length + 1 >= 4)) {
+        setTimeout(() => {
+          setRatingModalOpen(true);
+        }, 1200);
+      }
     } catch (err: any) {
       console.error(err);
       
@@ -388,6 +411,7 @@ export default function App() {
         primaryLanguage={profile.primary_language || "English (India)"}
         secondaryLanguage={profile.secondary_language || "Malayalam (മലയാളം)"}
         onLanguageChange={handleLanguageChange}
+        onOpenRatingModal={() => setRatingModalOpen(true)}
       />
 
       {/* Main Interactive Screen Segment */}
@@ -402,6 +426,22 @@ export default function App() {
           isReturningUser={isReturningUser}
         />
       </main>
+
+      {/* Modern Google Play In-App Rating Modal */}
+      <RatingModal
+        isOpen={ratingModalOpen}
+        onClose={() => {
+          setRatingModalOpen(false);
+          // Flag as dismissed locally so we don't annoy user on future sessions, but can still trigger from Sidebar
+          localStorage.setItem("v_astra_rating_status", "dismissed");
+        }}
+        onRate={() => {
+          setRatingModalOpen(false);
+          // Mark as successfully rated!
+          localStorage.setItem("v_astra_rating_status", "rated");
+        }}
+        appName="V-Astra AI"
+      />
     </div>
   );
 }
