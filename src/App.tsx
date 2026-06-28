@@ -66,6 +66,8 @@ export default function App() {
     return saved !== null ? saved === "true" : true;
   });
 
+  const [aiMode, setAiMode] = useState<"standard" | "medium" | "thinking">("standard");
+
   useEffect(() => {
     localStorage.setItem("v_astra_theme", theme);
     if (theme === "dark") {
@@ -322,6 +324,7 @@ export default function App() {
           messages: updatedMessages,
           systemInstruction,
           webSearchEnabled,
+          aiMode,
           primary_language: profile.primary_language || "English (India)",
           secondary_language: profile.secondary_language || "Malayalam (മലയാളം)",
           userName: profile.name,
@@ -424,6 +427,8 @@ export default function App() {
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           userName={profile.name}
           isReturningUser={isReturningUser}
+          aiMode={aiMode}
+          onAiModeChange={setAiMode}
         />
       </main>
 

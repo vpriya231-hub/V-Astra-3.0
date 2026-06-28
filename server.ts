@@ -100,7 +100,7 @@ async function startServer() {
   // API: Chat proxy using @google/genai
   app.post("/api/chat", async (req, res) => {
     try {
-      const { messages, systemInstruction, webSearchEnabled, primary_language, secondary_language, userName } = req.body;
+      const { messages, systemInstruction, webSearchEnabled, primary_language, secondary_language, userName, aiMode } = req.body;
       if (!messages || !Array.isArray(messages)) {
         res.status(400).json({ error: "Invalid request. 'messages' array is required." });
         return;
@@ -159,11 +159,27 @@ async function startServer() {
       // STT Voice / AI engine simulation: configure voice codecs & acoustic models
       console.log(`[STT / Voice AI Engine] Integrating voice capture pipelines. Primary recognition language: '${primary}', Secondary recognition language: '${secondary}'.`);
 
-      // 4. Generate content
+      // 4. Generate content based on selected mode
+      const selectedMode = aiMode || "standard";
+      let modeDirective = "";
+      let modelCandidates = ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite"];
+
+      if (selectedMode === "thinking") {
+        modeDirective = `\n\n[Mode: Thinking Activated]\n- You are operating in Advanced Reasoning, Coding, and Mathematical Thinking mode.\n- Focus on depth, extreme precision, and bulletproof logic. Write clear, detailed, and structured steps.\n- CRITICAL: You must explicitly walk through your reasoning step-by-step under a "### 💭 Analysis & Thought Process" header first, before presenting your clean, optimal final code/math answer.`;
+        modelCandidates = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-3.1-flash-lite"];
+      } else if (selectedMode === "medium") {
+        modeDirective = `\n\n[Mode: Medium Activated]\n- You are operating in Balanced All-Rounder Help mode.\n- Deliver beautifully detailed, well-rounded, and comprehensive explanations.\n- Frame complex topics elegantly and cover necessary sub-elements with high contextual nuance.`;
+        modelCandidates = ["gemini-2.5-flash", "gemini-3.5-flash"];
+      } else {
+        // "standard"
+        modeDirective = `\n\n[Mode: Standard Activated]\n- You are operating in Standard Companion mode (fast, direct, and conversational).\n- Focus on response speed, directness, and highly refined summaries.\n- Deliver the answers eloquently and directly, without unnecessary preamble.`;
+        modelCandidates = ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite"];
+      }
+
       const languageDirectives = `\n\n[Voice/STT Engine Configuration]\n- Primary Recognition & Speech Language: ${primary}\n- Secondary Recognition & Speech Language: ${secondary}\n- Always prioritize recognition, comprehension, and response generation in these chosen languages. If the user greets or replies in native script or accents corresponding to these options, adapt dynamically and deliver highly fluent responses.`;
 
       const config: any = {
-        systemInstruction: (systemInstruction || "You are V-Astra AI, a highly smart, sophisticated, and polished AI companion. Keep answers clear, eloquent, and helpful.") + languageDirectives,
+        systemInstruction: (systemInstruction || "You are V-Astra AI, a highly smart, sophisticated, and polished AI companion. Keep answers clear, eloquent, and helpful.") + modeDirective + languageDirectives,
       };
 
       // Conditionally enable Google Search grounding tool if webSearchEnabled is true
@@ -171,9 +187,6 @@ async function startServer() {
         config.tools = [{ googleSearch: {} }];
       }
 
-      // Prioritized list of model candidates to provide high-availability and handle transient demand spikes/503 errors
-      // Strictly excludes deprecated models like gemini-1.5-flash
-      const modelCandidates = ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite"];
       let response = null;
       let lastError: any = null;
 

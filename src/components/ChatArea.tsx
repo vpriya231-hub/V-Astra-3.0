@@ -3,7 +3,8 @@ import { motion } from "motion/react";
 import Markdown from "react-markdown";
 import { 
   Menu, Send, Sparkles, User, AlertCircle, HelpCircle, 
-  ArrowUpRight, Bot, Compass, MessageSquare, CornerDownLeft
+  ArrowUpRight, Bot, Compass, MessageSquare, CornerDownLeft,
+  ChevronDown
 } from "lucide-react";
 import { Message } from "../types";
 
@@ -15,6 +16,8 @@ interface ChatAreaProps {
   onToggleSidebar: () => void;
   userName: string;
   isReturningUser: boolean;
+  aiMode: "standard" | "medium" | "thinking";
+  onAiModeChange: (mode: "standard" | "medium" | "thinking") => void;
 }
 
 const STARTER_PROMPTS = [
@@ -52,6 +55,8 @@ export default function ChatArea({
   onToggleSidebar,
   userName,
   isReturningUser,
+  aiMode,
+  onAiModeChange,
 }: ChatAreaProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -312,6 +317,29 @@ export default function ChatArea({
               <Send className="w-4 h-4" />
             </button>
           </form>
+
+          {/* AI Mode Selector Dropdown */}
+          <div className="mt-2.5 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/80 rounded-xl px-3.5 py-1.5" id="ai-mode-selector-container">
+            <span className="text-[10px] sm:text-[11px] font-sans font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+              <span>AI Engine Mode</span>
+            </span>
+            <div className="relative">
+              <select
+                id="ai-mode-dropdown"
+                value={aiMode}
+                onChange={(e) => onAiModeChange(e.target.value as "standard" | "medium" | "thinking")}
+                className="appearance-none bg-white dark:bg-slate-950 border border-slate-250 dark:border-slate-800 rounded-lg py-1 pl-2.5 pr-8 text-[11px] sm:text-xs font-sans font-medium text-slate-700 dark:text-slate-200 hover:border-slate-350 dark:hover:border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer transition-all duration-200"
+              >
+                <option value="standard">Standard (Normal tasks, daily problems, more fast)</option>
+                <option value="medium">Medium (All rounder help)</option>
+                <option value="thinking">Thinking (Advanced maths and code)</option>
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 dark:text-slate-500">
+                <ChevronDown className="w-3 h-3" />
+              </div>
+            </div>
+          </div>
 
           {/* Quick tips label */}
           <div className="flex items-center justify-center gap-1.5 mt-2.5" id="input-help-tips">
