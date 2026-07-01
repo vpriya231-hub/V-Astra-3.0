@@ -48,7 +48,7 @@ async function startServer() {
   // API: Save user language settings (PUT /api/user/settings/language)
   app.put("/api/user/settings/language", (req, res) => {
     try {
-      const { primary_language, secondary_language, userName } = req.body;
+      const { primary_language, secondary_language, v_astra_language, userName } = req.body;
       if (!primary_language || !secondary_language) {
         res.status(400).json({ error: "Missing required fields: primary_language and secondary_language are required." });
         return;
@@ -60,16 +60,18 @@ async function startServer() {
       db[key] = {
         primary_language,
         secondary_language,
+        v_astra_language: v_astra_language || "English (India)",
         updatedAt: new Date().toISOString()
       };
       
       saveDatabase(db);
-      console.log(`[Database] Saved language preferences for user '${key}': Primary = ${primary_language}, Secondary = ${secondary_language}`);
+      console.log(`[Database] Saved language preferences for user '${key}': Primary = ${primary_language}, Secondary = ${secondary_language}, V Astra = ${v_astra_language}`);
 
       res.json({
         success: true,
         primary_language,
         secondary_language,
+        v_astra_language: v_astra_language || "English (India)",
         message: "Language preferences successfully saved to the database."
       });
     } catch (error: any) {
@@ -87,7 +89,8 @@ async function startServer() {
       
       const settings = db[key] || {
         primary_language: "English (India)",
-        secondary_language: "Malayalam (മലയാളം)"
+        secondary_language: "Malayalam (മലയാളം)",
+        v_astra_language: "English (India)"
       };
 
       res.json(settings);
@@ -130,12 +133,27 @@ async function startServer() {
       });
 
       // 3. Format messages to the @google/genai contents format
-      // GenAI format uses roles: "user" and "model".
-      const contents = messages.map((msg: { role: string; content: string }) => {
+      // GenAI format uses roles: "user" and "model". Supports multimodal image attachments.
+      const contents = messages.map((msg: { role: string; content: string; image?: { mimeType: string; data: string } }) => {
         const role = msg.role === "assistant" ? "model" : "user";
+        const parts: any[] = [{ text: msg.content || "" }];
+
+        if (msg.image && msg.image.data) {
+          let base64Data = msg.image.data;
+          if (base64Data.includes("base64,")) {
+            base64Data = base64Data.split("base64,")[1];
+          }
+          parts.push({
+            inlineData: {
+              mimeType: msg.image.mimeType || "image/jpeg",
+              data: base64Data,
+            }
+          });
+        }
+
         return {
           role,
-          parts: [{ text: msg.content }],
+          parts,
         };
       });
 
@@ -176,10 +194,13 @@ async function startServer() {
         modelCandidates = ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite"];
       }
 
-      const languageDirectives = `\n\n[Voice/STT Engine Configuration]\n- Primary Recognition & Speech Language: ${primary}\n- Secondary Recognition & Speech Language: ${secondary}\n- Always prioritize recognition, comprehension, and response generation in these chosen languages. If the user greets or replies in native script or accents corresponding to these options, adapt dynamically and deliver highly fluent responses.`;
+      // Short, concise response behavior directive by default
+      const conciseDirective = `\n\n[CRITICAL CONCISE RESPONSE CONSTRAINT]\n- By default, you MUST give very short, concise, and direct answers based on the image or text query.\n- You should ONLY provide a long, detailed, or elaborate explanation if the user explicitly asks for a "long answer" (or "detailed answer") in their prompt.\n- Otherwise, answer instantly in a few direct sentences, bullet points, or simple clean phrases. No long preambles, no conversational filler.`;
+
+      const languageDirectives = `\n\n[Voice/STT Engine & Multilingual Configuration]\n- Primary/Selected Language: ${primary}\n- Secondary Language: ${secondary}\n- SMART LANGUAGE DETECTION: Even if default/selected language is set, if the user starts speaking or typing in Malayalam, Spanish, French, Hindi, or any other language, you MUST automatically detect it, process the query under that language's context, and reply seamlessly in that SAME language. Deliver highly fluent responses in the script and accent corresponding to the detected language.`;
 
       const config: any = {
-        systemInstruction: (systemInstruction || "You are V-Astra AI, a highly smart, sophisticated, and polished AI companion. Keep answers clear, eloquent, and helpful.") + modeDirective + languageDirectives,
+        systemInstruction: (systemInstruction || "You are V-Astra AI, a highly smart, sophisticated, and polished AI companion. Keep answers clear, eloquent, and helpful.") + modeDirective + conciseDirective + languageDirectives,
       };
 
       // Conditionally enable Google Search grounding tool if webSearchEnabled is true

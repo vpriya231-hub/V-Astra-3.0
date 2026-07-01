@@ -16,6 +16,7 @@ export default function App() {
       joinedAt: "",
       primary_language: "English (India)",
       secondary_language: "Malayalam (മലയാളം)",
+      v_astra_language: "English (India)",
     };
     if (saved) {
       try {
@@ -139,6 +140,7 @@ export default function App() {
       joinedAt: new Date().toISOString(),
       primary_language: "English (India)",
       secondary_language: "Malayalam (മലയാളം)",
+      v_astra_language: "English (India)",
     });
   };
 
@@ -150,13 +152,12 @@ export default function App() {
           const response = await fetch(`/api/user/settings/language?userName=${encodeURIComponent(profile.name)}`);
           if (response.ok) {
             const data = await response.json();
-            if (data.primary_language && data.secondary_language) {
-              setProfile((prev) => ({
-                ...prev,
-                primary_language: data.primary_language,
-                secondary_language: data.secondary_language,
-              }));
-            }
+            setProfile((prev) => ({
+              ...prev,
+              primary_language: data.primary_language || prev.primary_language,
+              secondary_language: data.secondary_language || prev.secondary_language,
+              v_astra_language: data.v_astra_language || prev.v_astra_language || "English (India)",
+            }));
           }
         } catch (err) {
           console.error("Error fetching language settings from database:", err);
@@ -184,6 +185,7 @@ export default function App() {
         body: JSON.stringify({
           primary_language: primary,
           secondary_language: secondary,
+          v_astra_language: profile.v_astra_language,
           userName: profile.name,
         }),
       });
@@ -199,6 +201,36 @@ export default function App() {
     }
   };
 
+  const handleVAstraLanguageChange = async (lang: string) => {
+    // 1. Update local state
+    setProfile((prev) => ({
+      ...prev,
+      v_astra_language: lang,
+    }));
+
+    // 2. Securely save user language preferences to the backend database
+    try {
+      const response = await fetch("/api/user/settings/language", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          primary_language: profile.primary_language,
+          secondary_language: profile.secondary_language,
+          v_astra_language: lang,
+          userName: profile.name,
+        }),
+      });
+
+      if (!response.ok) {
+        console.error("Failed to save v_astra_language setting");
+      }
+    } catch (err) {
+      console.error("Error saving v_astra_language settings:", err);
+    }
+  };
+
   const handleResetUser = () => {
     setProfile({
       name: "",
@@ -206,6 +238,7 @@ export default function App() {
       joinedAt: "",
       primary_language: "English (India)",
       secondary_language: "Malayalam (മലയാളം)",
+      v_astra_language: "English (India)",
     });
     setActiveChatId(null);
     setChats([]);
@@ -262,7 +295,7 @@ export default function App() {
     setActiveChatId(null);
   };
 
-  const handleSendMessage = async (content: string) => {
+  const handleSendMessage = async (content: string, image?: { mimeType: string; data: string }) => {
     // Determine the current conversation context
     let currentChatId = activeChatId;
     let currentChats = [...chats];
@@ -290,6 +323,7 @@ export default function App() {
       role: "user",
       content,
       timestamp: new Date().toISOString(),
+      ...(image ? { image } : {}),
     };
 
     // Update history locally with user message
@@ -327,6 +361,7 @@ export default function App() {
           aiMode,
           primary_language: profile.primary_language || "English (India)",
           secondary_language: profile.secondary_language || "Malayalam (മലയാളം)",
+          v_astra_language: profile.v_astra_language || "English (India)",
           userName: profile.name,
         }),
       });
@@ -415,6 +450,8 @@ export default function App() {
         secondaryLanguage={profile.secondary_language || "Malayalam (മലയാളം)"}
         onLanguageChange={handleLanguageChange}
         onOpenRatingModal={() => setRatingModalOpen(true)}
+        vAstraLanguage={profile.v_astra_language || "English (India)"}
+        onVAstraLanguageChange={handleVAstraLanguageChange}
       />
 
       {/* Main Interactive Screen Segment */}
@@ -429,6 +466,7 @@ export default function App() {
           isReturningUser={isReturningUser}
           aiMode={aiMode}
           onAiModeChange={setAiMode}
+          vAstraLanguage={profile.v_astra_language || "English (India)"}
         />
       </main>
 

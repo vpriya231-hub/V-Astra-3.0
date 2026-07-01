@@ -37,6 +37,32 @@ const SECONDARY_LANGUAGES = [
   "Vietnamese (Tiếng Việt)"
 ];
 
+const V_ASTRA_LANGUAGES = [
+  "English (India)",
+  "English (US)",
+  "English (UK)",
+  "Malayalam (മലയാളം)",
+  "Arabic (العربية)",
+  "Bengali (বাংলা)",
+  "Chinese, Mandarin (中文)",
+  "Dutch (Nederlands)",
+  "French (Français)",
+  "German (Deutsch)",
+  "Hindi (हिंदी)",
+  "Italian (Italiano)",
+  "Japanese (日本語)",
+  "Korean (한국어)",
+  "Portuguese (Português)",
+  "Russian (Русский)",
+  "Spanish (Español)",
+  "Swahili (Kiswahili)",
+  "Swedish (Svenska)",
+  "Tamil (தமிழ்)",
+  "Telugu (తెలుగు)",
+  "Turkish (Türkçe)",
+  "Vietnamese (Tiếng Việt)"
+];
+
 interface SidebarProps {
   chats: ChatHistoryItem[];
   activeChatId: string | null;
@@ -57,6 +83,8 @@ interface SidebarProps {
   secondaryLanguage: string;
   onLanguageChange: (primary: string, secondary: string) => void;
   onOpenRatingModal: () => void;
+  vAstraLanguage: string;
+  onVAstraLanguageChange: (lang: string) => void;
 }
 
 export default function Sidebar({
@@ -79,6 +107,8 @@ export default function Sidebar({
   secondaryLanguage,
   onLanguageChange,
   onOpenRatingModal,
+  vAstraLanguage,
+  onVAstraLanguageChange,
 }: SidebarProps) {
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -498,10 +528,29 @@ export default function Sidebar({
                   </div>
 
                   <div className="space-y-2 pl-1" id="languages-dropdowns-container">
+                    {/* V Astra Language Option */}
+                    <div className="space-y-1">
+                      <label htmlFor="v-astra-lang-select" className="block text-[10px] font-bold text-indigo-600 dark:text-indigo-400 font-sans text-left">
+                        V Astra Language (Default / Preferred)
+                      </label>
+                      <select
+                        id="v-astra-lang-select"
+                        value={vAstraLanguage || "English (India)"}
+                        onChange={(e) => onVAstraLanguageChange(e.target.value)}
+                        className="w-full text-xs bg-indigo-50/50 dark:bg-indigo-950/20 text-slate-850 dark:text-slate-100 border border-indigo-100 dark:border-indigo-900/60 rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 cursor-pointer font-semibold"
+                      >
+                        {V_ASTRA_LANGUAGES.map((lang) => (
+                          <option key={lang} value={lang}>
+                            {lang}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     {/* Primary Language */}
                     <div className="space-y-1">
                       <label htmlFor="primary-lang-select" className="block text-[10px] font-medium text-slate-400 dark:text-slate-500 font-sans text-left">
-                        Primary Language
+                        Primary Recognition Language
                       </label>
                       <select
                         id="primary-lang-select"
@@ -520,7 +569,7 @@ export default function Sidebar({
                     {/* Secondary Language */}
                     <div className="space-y-1">
                       <label htmlFor="secondary-lang-select" className="block text-[10px] font-medium text-slate-400 dark:text-slate-500 font-sans text-left">
-                        Secondary Language
+                        Secondary Recognition Language
                       </label>
                       <select
                         id="secondary-lang-select"

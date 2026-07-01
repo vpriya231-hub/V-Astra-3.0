@@ -1,23 +1,24 @@
 import React, { useState, useRef, useEffect } from "react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import Markdown from "react-markdown";
 import { 
   Menu, Send, Sparkles, User, AlertCircle, HelpCircle, 
   ArrowUpRight, Bot, Compass, MessageSquare, CornerDownLeft,
-  ChevronDown
+  ChevronDown, Plus, Mic, X, Image, Camera, Upload
 } from "lucide-react";
 import { Message } from "../types";
 
 interface ChatAreaProps {
   messages: Message[];
   activeChatTitle: string;
-  onSendMessage: (content: string) => void;
+  onSendMessage: (content: string, image?: { mimeType: string; data: string }) => void;
   isLoading: boolean;
   onToggleSidebar: () => void;
   userName: string;
   isReturningUser: boolean;
   aiMode: "standard" | "medium" | "thinking";
   onAiModeChange: (mode: "standard" | "medium" | "thinking") => void;
+  vAstraLanguage: string;
 }
 
 const STARTER_PROMPTS = [
@@ -47,6 +48,109 @@ const STARTER_PROMPTS = [
   }
 ];
 
+const LANGUAGE_CODES: Record<string, { recognition: string; synthesis: string }> = {
+  "English (India)": { recognition: "en-IN", synthesis: "en-IN" },
+  "Malayalam (മലയാളം)": { recognition: "ml-IN", synthesis: "ml-IN" },
+  "Hindi (हिंदी)": { recognition: "hi-IN", synthesis: "hi-IN" },
+  "Tamil (தமிழ்)": { recognition: "ta-IN", synthesis: "ta-IN" },
+  "Telugu (తెలుగు)": { recognition: "te-IN", synthesis: "te-IN" },
+  "Bengali (বাংলা)": { recognition: "bn-IN", synthesis: "bn-IN" },
+  "Spanish (Español)": { recognition: "es-ES", synthesis: "es-ES" },
+  "French (Français)": { recognition: "fr-FR", synthesis: "fr-FR" },
+  "German (Deutsch)": { recognition: "de-DE", synthesis: "de-DE" },
+  "Japanese (日本語)": { recognition: "ja-JP", synthesis: "ja-JP" },
+  "Korean (한국어)": { recognition: "ko-KR", synthesis: "ko-KR" },
+  "Russian (Русский)": { recognition: "ru-RU", synthesis: "ru-RU" },
+  "Arabic (العربية)": { recognition: "ar-AE", synthesis: "ar-AE" },
+};
+
+const detectVoiceLanguage = (text: string, defaultLang: string): string => {
+  if (/[\u0d00-\u0d7f]/.test(text)) return "Malayalam (മലയാളം)";
+  if (/[\u0900-\u097f]/.test(text)) return "Hindi (हिंदी)";
+  if (/[\u0b80-\u0bff]/.test(text)) return "Tamil (தமிழ்)";
+  if (/[\u0c00-\u0c7f]/.test(text)) return "Telugu (తెలుగు)";
+  if (/[\u0980-\u09ff]/.test(text)) return "Bengali (বাংলা)";
+  if (/[\u3040-\u30ff\u4e00-\u9faf]/.test(text)) return "Japanese (日本語)";
+  if (/[\uac00-\ud7af\u1100-\u11ff]/.test(text)) return "Korean (한국어)";
+  if (/[\u0400-\u04ff]/.test(text)) return "Russian (Русский)";
+  if (/[\u0600-\u06ff]/.test(text)) return "Arabic (العربية)";
+  return defaultLang;
+};
+
+const WaveformBars = ({ state }: { state: "idle" | "listening" | "thinking" | "speaking" }) => {
+  const barsCount = 15;
+  const bars = Array.from({ length: barsCount });
+
+  return (
+    <div className="flex items-center justify-center gap-1.5 h-12 px-4 w-full">
+      {bars.map((_, i) => {
+        let baseHeight = "h-2";
+        let animateProps = {};
+
+        if (state === "listening") {
+          animateProps = {
+            scaleY: [1, 2.5, 1, 3.2, 1],
+            transition: {
+              duration: 0.8,
+              repeat: Infinity,
+              delay: i * 0.05,
+              ease: "easeInOut"
+            }
+          };
+        } else if (state === "speaking") {
+          animateProps = {
+            scaleY: [1, 3.5, 1, 4.5, 1],
+            transition: {
+              duration: 1.1,
+              repeat: Infinity,
+              delay: i * 0.07,
+              ease: "easeInOut"
+            }
+          };
+        } else if (state === "thinking") {
+          animateProps = {
+            scaleY: [1, 1.8, 1],
+            opacity: [0.4, 1, 0.4],
+            transition: {
+              duration: 1.4,
+              repeat: Infinity,
+              delay: i * 0.1,
+              ease: "easeInOut"
+            }
+          };
+        } else {
+          animateProps = {
+            scaleY: [1, 1.3, 1],
+            transition: {
+              duration: 2.0,
+              repeat: Infinity,
+              delay: i * 0.15,
+              ease: "easeInOut"
+            }
+          };
+        }
+
+        return (
+          <motion.div
+            key={i}
+            animate={animateProps}
+            style={{ transformOrigin: "center" }}
+            className={`w-[3px] rounded-full transition-colors duration-300 ${
+              state === "listening"
+                ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"
+                : state === "speaking"
+                ? "bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]"
+                : state === "thinking"
+                ? "bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.5)]"
+                : "bg-slate-300 dark:bg-slate-650"
+            } ${baseHeight}`}
+          />
+        );
+      })}
+    </div>
+  );
+};
+
 export default function ChatArea({
   messages,
   activeChatTitle,
@@ -57,20 +161,240 @@ export default function ChatArea({
   isReturningUser,
   aiMode,
   onAiModeChange,
+  vAstraLanguage,
 }: ChatAreaProps) {
   const [input, setInput] = useState("");
+  const [uploadedImage, setUploadedImage] = useState<{ mimeType: string; data: string; name: string } | null>(null);
+  const [voiceModeActive, setVoiceModeActive] = useState(false);
+  const [voiceState, setVoiceState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
+  const [voiceAssistantTranscript, setVoiceAssistantTranscript] = useState("");
+  const [isMicMuted, setIsMicMuted] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   // Auto-scroll on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
+  // Handle active listening/speaking toggling based on voiceModeActive or muting state
+  useEffect(() => {
+    if (voiceModeActive && !isMicMuted && voiceState !== "speaking" && voiceState !== "thinking" && !isLoading) {
+      setVoiceState("listening");
+      startSpeechRecognition();
+    } else if (!voiceModeActive) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      setVoiceState("idle");
+    }
+  }, [voiceModeActive, isMicMuted]);
+
+  // Auto speak incoming replies from Gemini when V Astra Voice Assistant is running
+  useEffect(() => {
+    if (messages.length === 0 || !voiceModeActive) return;
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage.role === "assistant") {
+      const detectedLang = detectVoiceLanguage(lastMessage.content, vAstraLanguage);
+      speakText(lastMessage.content, detectedLang);
+    }
+  }, [messages, voiceModeActive]);
+
+  // Sync state when loading from AI server
+  useEffect(() => {
+    if (isLoading && voiceModeActive) {
+      setVoiceState("thinking");
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
+    }
+  }, [isLoading, voiceModeActive]);
+
+  // Component cleanup
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  const handleTriggerFilePicker = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Please select a valid PNG, JPG, or JPEG image file.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setUploadedImage({
+        mimeType: file.type,
+        data: dataUrl,
+        name: file.name,
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveImage = () => {
+    setUploadedImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const startSpeechRecognition = () => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      console.warn("Speech Recognition not supported in this browser");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+    recognition.continuous = false;
+    recognition.interimResults = true;
+
+    const targetCode = LANGUAGE_CODES[vAstraLanguage]?.recognition || "en-IN";
+    recognition.lang = targetCode;
+
+    recognition.onstart = () => {
+      setVoiceState("listening");
+      setVoiceAssistantTranscript("");
+    };
+
+    recognition.onresult = (event: any) => {
+      let interimTranscript = "";
+      let finalTranscript = "";
+
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        } else {
+          interimTranscript += event.results[i][0].transcript;
+        }
+      }
+
+      setVoiceAssistantTranscript(finalTranscript || interimTranscript);
+
+      if (finalTranscript.trim()) {
+        onSendMessage(finalTranscript.trim());
+        setVoiceState("thinking");
+        recognition.stop();
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.warn("Speech recognition error:", event.error);
+    };
+
+    recognition.onend = () => {
+      setTimeout(() => {
+        if (voiceModeActive && !isMicMuted && !isLoading && !currentUtteranceRef.current) {
+          try {
+            recognition.start();
+          } catch (e) {}
+        }
+      }, 600);
+    };
+
+    try {
+      recognition.start();
+    } catch (err) {
+      console.error("Failed to start speech recognition:", err);
+    }
+  };
+
+  const speakText = (text: string, languageName: string) => {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+
+    // Clean Markdown characters out of speech text
+    const cleanText = text
+      .replace(/[*#`_~]/g, "")
+      .replace(/\[.*?\]\(.*?\)/g, "")
+      .trim();
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    currentUtteranceRef.current = utterance;
+    
+    const targetCode = LANGUAGE_CODES[languageName]?.synthesis || "en-IN";
+    utterance.lang = targetCode;
+    
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+    }
+
+    utterance.onstart = () => {
+      setVoiceState("speaking");
+    };
+
+    utterance.onend = () => {
+      currentUtteranceRef.current = null;
+      if (voiceModeActive && !isMicMuted) {
+        setVoiceState("listening");
+        startSpeechRecognition();
+      } else {
+        setVoiceState("idle");
+      }
+    };
+
+    utterance.onerror = () => {
+      currentUtteranceRef.current = null;
+      if (voiceModeActive && !isMicMuted) {
+        setVoiceState("listening");
+        startSpeechRecognition();
+      } else {
+        setVoiceState("idle");
+      }
+    };
+
+    const voices = window.speechSynthesis.getVoices();
+    const matchingVoice = voices.find(v => v.lang.toLowerCase().replace("_", "-") === targetCode.toLowerCase() || v.lang.startsWith(targetCode.slice(0, 2)));
+    if (matchingVoice) {
+      utterance.voice = matchingVoice;
+    }
+    
+    window.speechSynthesis.speak(utterance);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
-    onSendMessage(input.trim());
+    onSendMessage(input.trim(), uploadedImage ? { mimeType: uploadedImage.mimeType, data: uploadedImage.data } : undefined);
     setInput("");
+    handleRemoveImage();
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -230,6 +554,17 @@ export default function ChatArea({
                       }`}
                       id={`bubble-${message.id}`}
                     >
+                      {message.image && message.image.data && (
+                        <div className="mb-2 max-w-xs overflow-hidden rounded-xl border border-slate-200/50 dark:border-slate-800">
+                          <img 
+                            src={message.image.data} 
+                            alt="Attached file" 
+                            className="w-full h-auto object-cover max-h-48"
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+                      )}
+
                       {isUser ? (
                         <p className="whitespace-pre-wrap">{message.content}</p>
                       ) : (
@@ -288,11 +623,64 @@ export default function ChatArea({
         id="chat-input-bar-container"
       >
         <div className="max-w-2xl mx-auto">
+          {/* Hidden Device File Picker */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleImageUpload}
+            accept="image/png, image/jpeg, image/jpg"
+            className="hidden"
+            id="device-image-picker"
+          />
+
+          {/* Image Upload Thumbnail Preview */}
+          <AnimatePresence>
+            {uploadedImage && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                className="mb-2 relative inline-flex items-center gap-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1.5 pr-3.5 max-w-xs shadow-sm"
+                id="image-preview-thumbnail"
+              >
+                <img 
+                  src={uploadedImage.data} 
+                  alt="Uploaded Thumbnail" 
+                  className="w-10 h-10 rounded-lg object-cover border border-slate-150 dark:border-slate-800"
+                  referrerPolicy="no-referrer"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-sans font-medium text-slate-700 dark:text-slate-300 truncate max-w-[120px]">{uploadedImage.name}</p>
+                  <p className="text-[9px] font-sans text-emerald-600 dark:text-emerald-400 font-medium">Ready to send</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRemoveImage}
+                  className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full text-slate-400 hover:text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                  title="Remove Image"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <form 
             onSubmit={handleSubmit} 
             className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-lg shadow-slate-100/50 dark:shadow-none rounded-2xl p-1.5 flex items-end gap-1 focus-within:ring-2 focus-within:ring-slate-950/20 dark:focus-within:ring-indigo-500/20 focus-within:border-slate-950 dark:focus-within:border-indigo-500 transition-all duration-300"
             id="chat-input-form"
           >
+            {/* Gemini-Style Upload "+" Button on the Left */}
+            <button
+              type="button"
+              onClick={handleTriggerFilePicker}
+              className="p-2.5 rounded-xl text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shrink-0 mb-1 cursor-pointer"
+              title="Upload Image (PNG, JPG, JPEG)"
+              id="image-upload-trigger-btn"
+            >
+              <Plus className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+            </button>
+
             <textarea
               id="chat-message-input"
               value={input}
@@ -300,14 +688,25 @@ export default function ChatArea({
               onKeyDown={handleKeyPress}
               placeholder="Ask Astra anything..."
               rows={1}
-              className="flex-1 bg-transparent border-0 outline-none text-sm px-3.5 py-3 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 font-sans resize-none max-h-32 min-h-[44px] focus:ring-0 focus:outline-none"
+              className="flex-1 bg-transparent border-0 outline-none text-sm px-2 py-3 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 font-sans resize-none max-h-32 min-h-[44px] focus:ring-0 focus:outline-none"
             />
             
+            {/* Beautiful Voice Assistant Pulse Button */}
+            <button
+              type="button"
+              onClick={() => setVoiceModeActive(true)}
+              className="p-2.5 rounded-xl text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shrink-0 mb-1 cursor-pointer"
+              title="V Astra Voice Assistant"
+              id="voice-assistant-trigger-btn"
+            >
+              <Mic className="w-5 h-5 text-indigo-500 dark:text-indigo-400 animate-pulse" />
+            </button>
+
             <button
               type="submit"
-              disabled={!input.trim() || isLoading}
-              className={`p-3 rounded-xl transition-all duration-300 flex items-center justify-center shrink-0 cursor-pointer ${
-                input.trim() && !isLoading
+              disabled={(!input.trim() && !uploadedImage) || isLoading}
+              className={`p-3 rounded-xl transition-all duration-300 flex items-center justify-center shrink-0 cursor-pointer mb-1 ${
+                (input.trim() || uploadedImage) && !isLoading
                   ? "bg-slate-950 dark:bg-indigo-600 text-white shadow-md hover:bg-slate-900 dark:hover:bg-indigo-500 hover:shadow-lg"
                   : "bg-slate-50 dark:bg-slate-850 text-slate-300 dark:text-slate-600 border border-slate-100 dark:border-slate-800/50"
               }`}
@@ -350,6 +749,115 @@ export default function ChatArea({
           </div>
         </div>
       </div>
+
+      {/* V Astra Voice Assistant Overlay (Drawer-style Sliding Panel) */}
+      <AnimatePresence>
+        {voiceModeActive && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-950/40 dark:bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 p-4"
+            id="voice-assistant-modal-overlay"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 50, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.9, y: 50, opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-3xl p-6 shadow-2xl w-full max-w-md relative overflow-hidden"
+              id="voice-assistant-card"
+            >
+              {/* Outer Glow Effects */}
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-48 bg-indigo-500/10 dark:bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
+
+              {/* Header Title & Close */}
+              <div className="flex items-center justify-between mb-8 z-10 relative">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse" />
+                  <span className="font-sans font-semibold text-xs text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">
+                    V Astra Voice Assistant
+                  </span>
+                </div>
+                <button
+                  onClick={() => setVoiceModeActive(false)}
+                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full transition-colors cursor-pointer"
+                  title="Close Assistant"
+                  id="voice-assistant-close-btn"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Status and Waveform Oval Container */}
+              <div className="flex flex-col items-center justify-center mb-8 relative">
+                <p className="text-sm font-sans font-semibold text-slate-800 dark:text-slate-100 mb-1 capitalize">
+                  {voiceState === "listening" ? "Listening to you..." : 
+                   voiceState === "speaking" ? "Astra is speaking..." : 
+                   voiceState === "thinking" ? "Thinking..." : "Ready"}
+                </p>
+                <p className="text-[11px] font-sans text-slate-400 dark:text-slate-500 mb-6 text-center max-w-[250px] truncate h-4">
+                  {voiceAssistantTranscript || `Speak in your ${vAstraLanguage} preference`}
+                </p>
+
+                {/* Main Glowing Oval Waveform Window */}
+                <div className="w-64 h-36 rounded-full bg-gradient-to-br from-indigo-50/80 to-purple-50/80 dark:from-indigo-950/40 dark:to-purple-950/40 border border-indigo-100 dark:border-indigo-900/40 shadow-inner flex flex-col items-center justify-center relative overflow-hidden px-6">
+                  {/* Glowing background circles */}
+                  <div className={`absolute inset-0 bg-indigo-500/5 dark:bg-indigo-500/10 transition-opacity duration-700 ${voiceState !== "idle" ? "opacity-100 animate-pulse" : "opacity-0"}`} />
+                  
+                  {/* Dynamic wave visualizer */}
+                  <WaveformBars state={voiceState} />
+                </div>
+              </div>
+
+              {/* Assistant control bar buttons matching reference images */}
+              <div className="flex items-center justify-center gap-4 z-10 relative">
+                {/* Round video toggle */}
+                <button
+                  type="button"
+                  className="p-3 bg-slate-50 dark:bg-slate-850 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/50 dark:border-slate-800 rounded-full text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-250 cursor-pointer transition-all"
+                  title="Video Stream"
+                >
+                  <Camera className="w-5 h-5" />
+                </button>
+
+                {/* Round upload icon */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleTriggerFilePicker();
+                  }}
+                  className="p-3 bg-slate-50 dark:bg-slate-850 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/50 dark:border-slate-800 rounded-full text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-250 cursor-pointer transition-all"
+                  title="Upload Attachment"
+                >
+                  <Upload className="w-5 h-5" />
+                </button>
+
+                {/* Microphone toggle icon (Mute) */}
+                <button
+                  type="button"
+                  onClick={() => setIsMicMuted(!isMicMuted)}
+                  className={`p-4 rounded-full border shadow-md transition-all cursor-pointer ${
+                    isMicMuted
+                      ? "bg-rose-550 dark:bg-rose-600 text-white border-rose-650 hover:bg-rose-600 dark:hover:bg-rose-500"
+                      : "bg-indigo-600 dark:bg-indigo-500 text-white border-indigo-700 hover:bg-indigo-700 dark:hover:bg-indigo-400"
+                  }`}
+                  title={isMicMuted ? "Unmute Microphone" : "Mute Microphone"}
+                  id="voice-mic-mute-btn"
+                >
+                  {isMicMuted ? (
+                    <motion.div animate={{ rotate: [0, 10, -10, 0] }} transition={{ repeat: Infinity, duration: 1 }}>
+                      <X className="w-6 h-6" />
+                    </motion.div>
+                  ) : (
+                    <Mic className="w-6 h-6" />
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </div>
   );
