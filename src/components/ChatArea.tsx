@@ -174,6 +174,7 @@ export default function ChatArea({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<any>(null);
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const hasPermissionErrorRef = useRef<boolean>(false);
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -279,6 +280,9 @@ export default function ChatArea({
       return;
     }
 
+    // Reset error state on fresh start
+    hasPermissionErrorRef.current = false;
+
     const recognition = new SpeechRecognition();
     recognitionRef.current = recognition;
     recognition.continuous = false;
@@ -315,11 +319,16 @@ export default function ChatArea({
 
     recognition.onerror = (event: any) => {
       console.warn("Speech recognition error:", event.error);
+      if (event.error === "not-allowed") {
+        hasPermissionErrorRef.current = true;
+        setVoiceState("idle");
+        setVoiceAssistantTranscript("Microphone access is blocked. Please allow microphone permission in your browser URL bar or open the app in a new tab.");
+      }
     };
 
     recognition.onend = () => {
       setTimeout(() => {
-        if (voiceModeActive && !isMicMuted && !isLoading && !currentUtteranceRef.current) {
+        if (voiceModeActive && !isMicMuted && !isLoading && !currentUtteranceRef.current && !hasPermissionErrorRef.current) {
           try {
             recognition.start();
           } catch (e) {}

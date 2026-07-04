@@ -234,7 +234,7 @@ export default function Sidebar({
         </div>
 
         {/* Action: New Chat Button */}
-        <div className="p-4" id="sidebar-actions">
+        <div className="p-4 space-y-3" id="sidebar-actions">
           <button
             onClick={() => {
               onNewChat();
@@ -246,6 +246,25 @@ export default function Sidebar({
             <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-300" />
             New Conversation
           </button>
+
+          {/* Design (beta) Option inside a neon pink curved box */}
+          <a
+            href="https://anther-desgin.onrender.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-between p-3.5 rounded-2xl border border-pink-500/60 dark:border-pink-400/80 bg-pink-500/10 hover:bg-pink-500/15 shadow-[0_0_15px_rgba(236,72,153,0.3)] hover:shadow-[0_0_20px_rgba(236,72,153,0.5)] transition-all duration-300 cursor-pointer group decoration-none"
+            id="design-beta-option-link"
+          >
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="w-4.5 h-4.5 text-pink-500" />
+              <span className="text-sm font-sans font-semibold text-pink-600 dark:text-pink-400">
+                Design (beta)
+              </span>
+            </div>
+            <span className="text-[10px] font-sans font-bold tracking-wider px-2 py-0.5 rounded-full bg-pink-500 text-white uppercase shadow-sm">
+              New
+            </span>
+          </a>
         </div>
 
         {/* Scrollable Chat History */}
