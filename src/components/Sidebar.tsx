@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   Plus, MessageSquare, Edit2, Trash2, Check, X, Settings, 
   Sparkles, ChevronDown, Trash, RefreshCw, Sun, Moon, ExternalLink, Globe, Languages,
-  Search, Star
+  Search, Star, Flag
 } from "lucide-react";
 import { ChatHistoryItem } from "../types";
 
@@ -435,6 +435,18 @@ export default function Sidebar({
 
         {/* Sidebar Footer with interactive Gemini API Key Secret Box */}
         <div className="p-4 border-t border-slate-100/40 dark:border-slate-800/40 bg-white/35 dark:bg-slate-900/35 backdrop-blur-md" id="sidebar-footer">
+          {/* Google Play Compliant AI-generated content user reporting link */}
+          <a
+            href="https://docs.google.com/forms/d/e/1FAIpQLSeWnFSIQfBah8Je7kvxCtH3ksuotbB8xrqRM0_GvM-4BN9iGg/viewform?usp=header"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2.5 px-3 py-2.5 mb-3 rounded-xl border border-slate-200/80 dark:border-slate-800/60 bg-white/50 dark:bg-slate-950/20 hover:bg-rose-500/10 dark:hover:bg-rose-500/15 hover:border-rose-300 dark:hover:border-rose-800 text-slate-700 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 transition-all duration-300 cursor-pointer text-xs font-sans font-medium decoration-none"
+            id="report-ai-content-link"
+          >
+            <Flag className="w-4 h-4 text-rose-500 shrink-0" />
+            <span className="truncate">🚩 Report AI Content</span>
+          </a>
+
           {/* Settings trigger */}
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2 min-w-0">
