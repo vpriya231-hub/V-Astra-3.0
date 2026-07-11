@@ -210,7 +210,7 @@ export default function Sidebar({
         initial={{ x: "-100%" }}
         animate={{ x: isOpen ? 0 : "-100%" }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="fixed top-0 bottom-0 left-0 z-50 w-[280px] md:w-[320px] flex flex-col h-screen liquid-glass border-r border-white/40 dark:border-slate-800/50 shadow-2xl shadow-slate-100/50 dark:shadow-none text-slate-800 dark:text-slate-100"
+        className="fixed top-0 bottom-0 left-0 z-50 w-[280px] md:w-[320px] flex flex-col h-screen overflow-y-auto liquid-glass border-r border-white/40 dark:border-slate-800/50 shadow-2xl shadow-slate-100/50 dark:shadow-none text-slate-800 dark:text-slate-100"
         id="sidebar-container"
       >
         {/* Header Branding */}
@@ -294,8 +294,8 @@ export default function Sidebar({
           </button>
         </div>
 
-        {/* Scrollable Chat History */}
-        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-4" id="chat-history-scroll-container">
+        {/* Chat History */}
+        <div className="flex-1 px-3 py-2 space-y-4" id="chat-history-scroll-container">
           
           {/* Search Chats Row */}
           {chats.length > 0 && (
