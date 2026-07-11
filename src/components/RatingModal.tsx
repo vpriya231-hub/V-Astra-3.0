@@ -1,15 +1,23 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Star, X, Sparkles } from "lucide-react";
+import { t } from "../translations";
 
 interface RatingModalProps {
   isOpen: boolean;
   onClose: () => void;
   onRate: () => void;
   appName?: string;
+  interfaceLanguage?: string;
 }
 
-export default function RatingModal({ isOpen, onClose, onRate, appName = "V-Astra AI" }: RatingModalProps) {
+export default function RatingModal({ 
+  isOpen, 
+  onClose, 
+  onRate, 
+  appName = "V-Astra AI",
+  interfaceLanguage = "English"
+}: RatingModalProps) {
   const [hoveredStar, setHoveredStar] = useState<number | null>(null);
   const [selectedStar, setSelectedStar] = useState<number | null>(null);
 
@@ -84,10 +92,10 @@ export default function RatingModal({ isOpen, onClose, onRate, appName = "V-Astr
 
               {/* Title and Subtitle */}
               <h2 className="text-lg font-semibold text-slate-850 dark:text-slate-100 tracking-tight" id="rating-title">
-                Enjoying our app?
+                {t("rating_title", interfaceLanguage)}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 max-w-xs leading-normal" id="rating-subtitle">
-                Tap a star to rate it on the Google Play Store. We value your feedback to make V-Astra even better!
+                {t("rating_message", interfaceLanguage)}
               </p>
 
               {/* Five Star Widget (Highly interactive & custom styled) */}
@@ -132,7 +140,7 @@ export default function RatingModal({ isOpen, onClose, onRate, appName = "V-Astr
                   className="px-5 py-2.5 rounded-xl text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-all cursor-pointer font-sans"
                   id="rating-later-button"
                 >
-                  Later
+                  {t("dismiss", interfaceLanguage)}
                 </button>
 
                 <button
@@ -141,7 +149,7 @@ export default function RatingModal({ isOpen, onClose, onRate, appName = "V-Astr
                   className="px-6 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-tr from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 active:scale-[0.98] shadow-sm hover:shadow shadow-indigo-500/20 transition-all cursor-pointer font-sans flex items-center gap-1.5"
                   id="rating-now-button"
                 >
-                  Rate Now
+                  {t("rate_now", interfaceLanguage)}
                 </button>
               </div>
             </div>

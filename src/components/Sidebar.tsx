@@ -6,6 +6,8 @@ import {
   Search, Star, Flag
 } from "lucide-react";
 import { ChatHistoryItem } from "../types";
+import { t } from "../translations";
+import VTransLogo from "./VTransLogo";
 
 const PRIMARY_LANGUAGES = [
   "English (India)",
@@ -85,6 +87,8 @@ interface SidebarProps {
   onOpenRatingModal: () => void;
   vAstraLanguage: string;
   onVAstraLanguageChange: (lang: string) => void;
+  interfaceLanguage: string;
+  onOpenTranslationModal: () => void;
 }
 
 export default function Sidebar({
@@ -109,6 +113,8 @@ export default function Sidebar({
   onOpenRatingModal,
   vAstraLanguage,
   onVAstraLanguageChange,
+  interfaceLanguage,
+  onOpenTranslationModal,
 }: SidebarProps) {
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -210,8 +216,8 @@ export default function Sidebar({
         {/* Header Branding */}
         <div className="p-5 flex items-center justify-between border-b border-slate-100/40 dark:border-slate-800/30" id="sidebar-header">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-slate-950 dark:bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-slate-950/10">
-              <Sparkles className="w-5 h-5 text-indigo-300 dark:text-indigo-100" />
+            <div className="w-11 h-11 rounded-2xl bg-slate-950 dark:bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-slate-950/10">
+              <Sparkles className="w-6 h-6 text-indigo-300 dark:text-indigo-100" />
             </div>
             <div>
               <h2 className="font-display font-semibold text-lg leading-tight tracking-tight text-slate-900 dark:text-white">
@@ -244,7 +250,7 @@ export default function Sidebar({
             id="new-chat-btn"
           >
             <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-300" />
-            New Conversation
+            {t("new_conversation", interfaceLanguage)}
           </button>
 
           {/* Design (beta) Option inside a neon pink curved box */}
@@ -258,13 +264,34 @@ export default function Sidebar({
             <div className="flex items-center gap-2.5">
               <Sparkles className="w-4.5 h-4.5 text-pink-500" />
               <span className="text-sm font-sans font-semibold text-pink-600 dark:text-pink-400">
-                Design (beta)
+                {t("design_beta", interfaceLanguage)}
               </span>
             </div>
             <span className="text-[10px] font-sans font-bold tracking-wider px-2 py-0.5 rounded-full bg-pink-500 text-white uppercase shadow-sm">
               New
             </span>
           </a>
+
+          {/* Translate Option with custom glowing V-Trans design */}
+          <button
+            onClick={() => {
+              onOpenTranslationModal();
+            }}
+            className="w-full flex items-center justify-between p-3.5 rounded-2xl border border-orange-500/60 dark:border-orange-400/80 bg-orange-500/10 hover:bg-orange-500/15 shadow-[0_0_15px_rgba(249,115,22,0.3)] hover:shadow-[0_0_20px_rgba(249,115,22,0.5)] transition-all duration-300 cursor-pointer group text-left"
+            id="translate-menu-option"
+          >
+            <div className="flex items-center gap-2.5">
+              <VTransLogo className="w-6 h-6 shrink-0" />
+              <span className="text-sm font-sans font-semibold text-orange-600 dark:text-orange-400">
+                {t("translate", interfaceLanguage)}
+              </span>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <span className="text-[9px] font-sans font-bold tracking-wider px-2 py-0.5 rounded-full bg-orange-500 text-white uppercase shadow-sm animate-pulse">
+                Live
+              </span>
+            </div>
+          </button>
         </div>
 
         {/* Scrollable Chat History */}
@@ -284,7 +311,7 @@ export default function Sidebar({
                     <Search className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
                     <input
                       type="text"
-                      placeholder="Search chats..."
+                      placeholder={t("search_chats", interfaceLanguage)}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="w-full bg-transparent border-0 outline-none text-xs text-slate-700 dark:text-slate-200 placeholder:text-slate-400 font-sans focus:ring-0"
@@ -305,7 +332,7 @@ export default function Sidebar({
                 ) : (
                   <div className="flex items-center justify-between w-full" id="search-collapsed-container">
                     <span className="text-[10px] font-sans font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                      History
+                      {t("history", interfaceLanguage)}
                     </span>
                     <button
                       onClick={() => setIsSearchExpanded(true)}
@@ -324,14 +351,14 @@ export default function Sidebar({
           {chats.length === 0 ? (
             <div className="text-center py-10 px-4">
               <MessageSquare className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-2.5" />
-              <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">No conversation history yet</p>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Start chatting to record your trace.</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">{t("no_history", interfaceLanguage)}</p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">{t("start_chatting_desc", interfaceLanguage)}</p>
             </div>
           ) : filteredChats.length === 0 ? (
             <div className="text-center py-10 px-4" id="no-search-results">
               <Search className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-2.5" />
-              <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">No matching chats found</p>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Try a different search term or clear search.</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">{t("no_search_results", interfaceLanguage)}</p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">{t("try_different_search", interfaceLanguage)}</p>
             </div>
           ) : (
             <div className="space-y-6" id="filtered-chats-list">
@@ -444,7 +471,7 @@ export default function Sidebar({
             id="report-ai-content-link"
           >
             <Flag className="w-4 h-4 text-rose-500 shrink-0" />
-            <span className="truncate">🚩 Report AI Content</span>
+            <span className="truncate">{t("report_ai_content", interfaceLanguage)}</span>
           </a>
 
           {/* Settings trigger */}
@@ -482,7 +509,7 @@ export default function Sidebar({
               >
                 {/* Theme Toggle Button (Request: light/dark theme toggle button should only be placed inside this Settings menu) */}
                 <div className="flex items-center justify-between pt-1">
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400 font-sans">App Theme</span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 font-sans">{t("app_theme", interfaceLanguage)}</span>
                   <button
                     onClick={onThemeToggle}
                     className="text-[11px] font-sans font-semibold px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-1.5 cursor-pointer shadow-sm transition-all duration-200"
@@ -491,12 +518,12 @@ export default function Sidebar({
                     {theme === "light" ? (
                       <>
                         <Sun className="w-3.5 h-3.5 text-amber-500" />
-                        <span>Light Mode</span>
+                        <span>{t("light_mode", interfaceLanguage)}</span>
                       </>
                     ) : (
                       <>
                         <Moon className="w-3.5 h-3.5 text-indigo-400" />
-                        <span>Dark Mode</span>
+                        <span>{t("dark_mode", interfaceLanguage)}</span>
                       </>
                     )}
                   </button>
@@ -509,7 +536,7 @@ export default function Sidebar({
                     className="w-full flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-sans hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
                     id="capabilities-btn"
                   >
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">Capabilities</span>
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">{t("capabilities", interfaceLanguage)}</span>
                     <ChevronDown className={`w-3.5 h-3.5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${showCapabilities ? "rotate-180" : ""}`} />
                   </button>
 
@@ -526,7 +553,7 @@ export default function Sidebar({
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5 text-xs text-slate-750 dark:text-slate-200 font-medium">
                             <Globe className="w-3.5 h-3.5 text-indigo-500" />
-                            <span>Web search</span>
+                            <span>{t("web_search", interfaceLanguage)}</span>
                           </div>
                           {/* Standard high quality toggle button */}
                           <button
@@ -544,7 +571,7 @@ export default function Sidebar({
                           </button>
                         </div>
                         <p className="text-[10px] leading-normal text-slate-500 dark:text-slate-400 font-sans text-left">
-                          V Astra will automatically search the web when it determines it needs current information.
+                          {t("web_search_desc", interfaceLanguage)}
                         </p>
                       </motion.div>
                     )}
@@ -555,14 +582,14 @@ export default function Sidebar({
                 <div className="pt-2 border-t border-slate-100/30 dark:border-slate-800/30 space-y-2" id="languages-settings-section">
                   <div className="flex items-center gap-1.5 text-[11px] font-sans font-semibold text-slate-750 dark:text-slate-300">
                     <Languages className="w-3.5 h-3.5 text-indigo-500" />
-                    <span>Languages for speaking to V-Astra AI</span>
+                    <span>{t("languages_for_speaking", interfaceLanguage)}</span>
                   </div>
 
                   <div className="space-y-2 pl-1" id="languages-dropdowns-container">
                     {/* V Astra Language Option */}
                     <div className="space-y-1">
                       <label htmlFor="v-astra-lang-select" className="block text-[10px] font-bold text-indigo-600 dark:text-indigo-400 font-sans text-left">
-                        V Astra Language (Default / Preferred)
+                        {t("v_astra_lang", interfaceLanguage)}
                       </label>
                       <select
                         id="v-astra-lang-select"
@@ -581,7 +608,7 @@ export default function Sidebar({
                     {/* Primary Language */}
                     <div className="space-y-1">
                       <label htmlFor="primary-lang-select" className="block text-[10px] font-medium text-slate-400 dark:text-slate-500 font-sans text-left">
-                        Primary Recognition Language
+                        {t("primary_recognition", interfaceLanguage)}
                       </label>
                       <select
                         id="primary-lang-select"
@@ -600,7 +627,7 @@ export default function Sidebar({
                     {/* Secondary Language */}
                     <div className="space-y-1">
                       <label htmlFor="secondary-lang-select" className="block text-[10px] font-medium text-slate-400 dark:text-slate-500 font-sans text-left">
-                        Secondary Recognition Language
+                        {t("secondary_recognition", interfaceLanguage)}
                       </label>
                       <select
                         id="secondary-lang-select"
@@ -622,7 +649,7 @@ export default function Sidebar({
                 <div className="pt-2.5 border-t border-slate-100/30 dark:border-slate-800/30 space-y-1.5" id="try-our-apps-section">
                   <div className="flex items-center gap-1.5 text-[10px] font-sans font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">
                     <Sparkles className="w-3 h-3 text-indigo-500" />
-                    <span>Try our Apps</span>
+                    <span>{t("try_our_apps", interfaceLanguage)}</span>
                   </div>
                   
                   {/* V-Trans App Link */}
@@ -635,12 +662,12 @@ export default function Sidebar({
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-sans font-semibold text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                        V-Trans
+                        {t("v_trans", interfaceLanguage)}
                       </span>
                       <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-indigo-500 transition-colors" />
                     </div>
                     <span className="text-[10px] text-slate-500 dark:text-slate-400 font-sans mt-0.5">
-                      Voice & Text Translator
+                      {t("voice_translator_desc", interfaceLanguage)}
                     </span>
                   </a>
 
@@ -651,14 +678,14 @@ export default function Sidebar({
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-sans font-semibold text-slate-400 dark:text-slate-500">
-                        Vocalix
+                        {t("vocalix", interfaceLanguage)}
                       </span>
                       <span className="text-[9px] font-sans px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 font-medium">
-                        Coming Soon
+                        {t("coming_soon", interfaceLanguage)}
                       </span>
                     </div>
                     <span className="text-[10px] text-slate-400 dark:text-slate-500 font-sans mt-0.5">
-                      Malayalam AI Voice Over
+                      {t("malayalam_voice_desc", interfaceLanguage)}
                     </span>
                   </div>
                 </div>
@@ -667,7 +694,7 @@ export default function Sidebar({
                 <div className="pt-2.5 border-t border-slate-100/30 dark:border-slate-800/30 space-y-1.5" id="rate-app-section">
                   <div className="flex items-center gap-1.5 text-[10px] font-sans font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">
                     <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-                    <span>Support V-Astra</span>
+                    <span>{t("support_v_astra", interfaceLanguage)}</span>
                   </div>
                   <button
                     onClick={() => {
@@ -678,7 +705,7 @@ export default function Sidebar({
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-sans font-semibold text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                        Rate V-Astra AI
+                        {t("rate_v_astra", interfaceLanguage)}
                       </span>
                       <div className="flex items-center gap-0.5">
                         <Star className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
@@ -689,14 +716,14 @@ export default function Sidebar({
                       </div>
                     </div>
                     <span className="text-[10px] text-slate-500 dark:text-slate-400 font-sans mt-0.5">
-                      Love using V-Astra? Tap here to rate us on the Play Store!
+                      {t("rate_v_astra_desc", interfaceLanguage)}
                     </span>
                   </button>
                 </div>
 
                 {/* Reset User Profile Action */}
                 <div className="flex items-center justify-between pt-1 border-t border-slate-100/30 dark:border-slate-800/30">
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400 font-sans">Reset onboarding name</span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 font-sans">{t("reset_onboarding_name", interfaceLanguage)}</span>
                   <button
                     onClick={() => {
                       if (confirm("Reset profile name and return to the onboarding flow?")) {
@@ -707,14 +734,14 @@ export default function Sidebar({
                     id="reset-name-btn"
                   >
                     <RefreshCw className="w-3 h-3" />
-                    Reset Name
+                    {t("reset_name", interfaceLanguage)}
                   </button>
                 </div>
 
                 {/* Clear all chats */}
                 {chats.length > 0 && (
                   <div className="flex items-center justify-between pt-1 border-t border-slate-100/30 dark:border-slate-800/30">
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400 font-sans">Clear all history</span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 font-sans">{t("clear_all_history", interfaceLanguage)}</span>
                     <button
                       onClick={() => {
                         if (confirm("This will permanently delete all conversation history. Are you sure?")) {
@@ -725,7 +752,7 @@ export default function Sidebar({
                       id="clear-all-history-btn"
                     >
                       <Trash className="w-3 h-3" />
-                      Clear All
+                      {t("clear_all", interfaceLanguage)}
                     </button>
                   </div>
                 )}

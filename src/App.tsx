@@ -5,6 +5,9 @@ import ChatArea from "./components/ChatArea";
 import RatingModal from "./components/RatingModal";
 import { ChatHistoryItem, Message, UserProfile } from "./types";
 import { Sparkles } from "lucide-react";
+import TranslationModal from "./components/TranslationModal";
+import TranslationTransition from "./components/TranslationTransition";
+import { Language, t } from "./translations";
 
 export default function App() {
   // 1. Core Local Storage States
@@ -56,6 +59,14 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [ratingModalOpen, setRatingModalOpen] = useState(false);
+
+  // Interface Translation states (V-Trans)
+  const [interfaceLanguage, setInterfaceLanguage] = useState<string>(() => {
+    return localStorage.getItem("v_astra_interface_language") || "English";
+  });
+  const [showTranslationModal, setShowTranslationModal] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [translatingToLanguage, setTranslatingToLanguage] = useState("");
 
   // Theme & Session-based Greeting
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -231,6 +242,19 @@ export default function App() {
     }
   };
 
+  const handleSelectInterfaceLanguage = (language: Language) => {
+    setShowTranslationModal(false);
+    setTranslatingToLanguage(`${language.name} (${language.nativeName})`);
+    setIsTranslating(true);
+
+    // Apply the translation after a 1.8-second duration (simulating translation wave)
+    setTimeout(() => {
+      setInterfaceLanguage(language.name);
+      localStorage.setItem("v_astra_interface_language", language.name);
+      setIsTranslating(false);
+    }, 1800);
+  };
+
   const handleResetUser = () => {
     setProfile({
       name: "",
@@ -246,6 +270,7 @@ export default function App() {
     setIsReturningUser(false);
     setTheme("light");
     setWebSearchEnabled(true);
+    setInterfaceLanguage("English");
     localStorage.removeItem("v_astra_user_profile");
     localStorage.removeItem("v_astra_chats");
     localStorage.removeItem("v_astra_api_key");
@@ -253,6 +278,7 @@ export default function App() {
     localStorage.removeItem("v_astra_is_returning");
     localStorage.removeItem("v_astra_theme");
     localStorage.removeItem("v_astra_web_search_enabled");
+    localStorage.removeItem("v_astra_interface_language");
     sessionStorage.removeItem("v_astra_session_loaded");
   };
 
@@ -452,6 +478,8 @@ export default function App() {
         onOpenRatingModal={() => setRatingModalOpen(true)}
         vAstraLanguage={profile.v_astra_language || "English (India)"}
         onVAstraLanguageChange={handleVAstraLanguageChange}
+        interfaceLanguage={interfaceLanguage}
+        onOpenTranslationModal={() => setShowTranslationModal(true)}
       />
 
       {/* Main Interactive Screen Segment */}
@@ -467,6 +495,7 @@ export default function App() {
           aiMode={aiMode}
           onAiModeChange={setAiMode}
           vAstraLanguage={profile.v_astra_language || "English (India)"}
+          interfaceLanguage={interfaceLanguage}
         />
       </main>
 
@@ -484,6 +513,21 @@ export default function App() {
           localStorage.setItem("v_astra_rating_status", "rated");
         }}
         appName="V-Astra AI"
+        interfaceLanguage={interfaceLanguage}
+      />
+
+      {/* Modern Selection Modal */}
+      <TranslationModal
+        isOpen={showTranslationModal}
+        onClose={() => setShowTranslationModal(false)}
+        onSelectLanguage={handleSelectInterfaceLanguage}
+        currentLanguage={interfaceLanguage}
+      />
+
+      {/* Soft Wave Ripple Transition Overlay */}
+      <TranslationTransition
+        isVisible={isTranslating}
+        targetLanguage={translatingToLanguage}
       />
     </div>
   );

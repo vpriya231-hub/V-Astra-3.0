@@ -7,6 +7,7 @@ import {
   ChevronDown, Plus, Mic, X, Image, Camera, Upload
 } from "lucide-react";
 import { Message } from "../types";
+import { t } from "../translations";
 
 interface ChatAreaProps {
   messages: Message[];
@@ -19,6 +20,7 @@ interface ChatAreaProps {
   aiMode: "standard" | "medium" | "thinking";
   onAiModeChange: (mode: "standard" | "medium" | "thinking") => void;
   vAstraLanguage: string;
+  interfaceLanguage: string;
 }
 
 const STARTER_PROMPTS = [
@@ -162,6 +164,7 @@ export default function ChatArea({
   aiMode,
   onAiModeChange,
   vAstraLanguage,
+  interfaceLanguage,
 }: ChatAreaProps) {
   const [input, setInput] = useState("");
   const [uploadedImage, setUploadedImage] = useState<{ mimeType: string; data: string; name: string } | null>(null);
@@ -437,29 +440,29 @@ export default function ChatArea({
             <div className="text-[10px] sm:text-xs font-sans text-slate-500 dark:text-slate-400 leading-none mb-0.5">
               {isReturningUser ? (
                 <span>
-                  <strong className="font-bold text-slate-900 dark:text-white">{userName}</strong> Returns!
+                  <strong className="font-bold text-slate-900 dark:text-white">{userName}</strong> {t("returns", interfaceLanguage)}
                 </span>
               ) : (
                 (() => {
                   const hours = new Date().getHours();
-                  let salutation = "Good Morning";
+                  let salutationKey: "good_morning" | "good_afternoon" | "good_evening" | "good_night" = "good_morning";
                   if (hours >= 12 && hours < 18) {
-                    salutation = "Good Afternoon";
+                    salutationKey = "good_afternoon";
                   } else if (hours >= 18 && hours < 22) {
-                    salutation = "Good Evening";
+                    salutationKey = "good_evening";
                   } else if (hours >= 22 || hours < 5) {
-                    salutation = "Good Night";
+                    salutationKey = "good_night";
                   }
                   return (
                     <span>
-                      {salutation}, <strong className="font-bold text-slate-900 dark:text-white">{userName}</strong>
+                      {t(salutationKey, interfaceLanguage)}, <strong className="font-bold text-slate-900 dark:text-white">{userName}</strong>
                     </span>
                   );
                 })()
               )}
             </div>
             <h1 className="font-display font-semibold text-xs text-slate-400 dark:text-slate-500 truncate max-w-[150px] sm:max-w-[180px] md:max-w-[300px]">
-              {messages.length > 0 ? activeChatTitle : "Astra Playground"}
+              {messages.length > 0 ? activeChatTitle : t("astra_playground", interfaceLanguage)}
             </h1>
           </div>
         </div>
@@ -493,10 +496,10 @@ export default function ChatArea({
                 </div>
                 
                 <h2 className="font-display text-2xl md:text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">
-                  Welcome to Astra, <span className="text-slate-600 dark:text-slate-400 font-normal">{userName}</span>
+                  {t("welcome_back", interfaceLanguage)}, <span className="text-slate-600 dark:text-slate-400 font-normal">{userName}</span>
                 </h2>
                 <p className="text-slate-400 dark:text-slate-500 text-xs md:text-sm max-w-sm mx-auto mt-2 font-sans leading-relaxed">
-                  How can your neural companion assist your thoughts or optimize your daily creations today?
+                  {t("welcome_desc", interfaceLanguage)}
                 </p>
               </motion.div>
 
@@ -695,7 +698,7 @@ export default function ChatArea({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyPress}
-              placeholder="Ask Astra anything..."
+              placeholder={t("ask_astra", interfaceLanguage)}
               rows={1}
               className="flex-1 bg-transparent border-0 outline-none text-sm px-2 py-3 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 font-sans resize-none max-h-32 min-h-[44px] focus:ring-0 focus:outline-none"
             />
@@ -730,7 +733,7 @@ export default function ChatArea({
           <div className="mt-2.5 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/80 rounded-xl px-3.5 py-1.5" id="ai-mode-selector-container">
             <span className="text-[10px] sm:text-[11px] font-sans font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-              <span>AI Engine Mode</span>
+              <span>{t("ai_engine_mode", interfaceLanguage)}</span>
             </span>
             <div className="relative">
               <select
@@ -739,9 +742,9 @@ export default function ChatArea({
                 onChange={(e) => onAiModeChange(e.target.value as "standard" | "medium" | "thinking")}
                 className="appearance-none bg-white dark:bg-slate-950 border border-slate-250 dark:border-slate-800 rounded-lg py-1 pl-2.5 pr-8 text-[11px] sm:text-xs font-sans font-medium text-slate-700 dark:text-slate-200 hover:border-slate-350 dark:hover:border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer transition-all duration-200"
               >
-                <option value="standard">Standard (Normal tasks, daily problems, more fast)</option>
-                <option value="medium">Medium (All rounder help)</option>
-                <option value="thinking">Thinking (Advanced maths and code)</option>
+                <option value="standard">{t("standard_mode", interfaceLanguage)}</option>
+                <option value="medium">{t("medium_mode", interfaceLanguage)}</option>
+                <option value="thinking">{t("thinking_mode", interfaceLanguage)}</option>
               </select>
               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 dark:text-slate-500">
                 <ChevronDown className="w-3 h-3" />
@@ -801,9 +804,9 @@ export default function ChatArea({
               {/* Status and Waveform Oval Container */}
               <div className="flex flex-col items-center justify-center mb-8 relative">
                 <p className="text-sm font-sans font-semibold text-slate-800 dark:text-slate-100 mb-1 capitalize">
-                  {voiceState === "listening" ? "Listening to you..." : 
-                   voiceState === "speaking" ? "Astra is speaking..." : 
-                   voiceState === "thinking" ? "Thinking..." : "Ready"}
+                  {voiceState === "listening" ? t("listening", interfaceLanguage) : 
+                   voiceState === "speaking" ? t("speaking", interfaceLanguage) : 
+                   voiceState === "thinking" ? t("thinking", interfaceLanguage) : "Ready"}
                 </p>
                 <p className="text-[11px] font-sans text-slate-400 dark:text-slate-500 mb-6 text-center max-w-[250px] truncate h-4">
                   {voiceAssistantTranscript || `Speak in your ${vAstraLanguage} preference`}
