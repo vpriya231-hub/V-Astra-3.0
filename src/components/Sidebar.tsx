@@ -210,7 +210,7 @@ export default function Sidebar({
         initial={{ x: "-100%" }}
         animate={{ x: isOpen ? 0 : "-100%" }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="fixed top-0 bottom-0 left-0 z-50 w-[280px] md:w-[320px] flex flex-col h-screen overflow-y-auto liquid-glass border-r border-white/40 dark:border-slate-800/50 shadow-2xl shadow-slate-100/50 dark:shadow-none text-slate-800 dark:text-slate-100"
+        className="fixed top-0 bottom-0 left-0 z-50 w-[280px] md:w-[320px] flex flex-col h-screen liquid-glass border-r border-white/40 dark:border-slate-800/50 shadow-2xl shadow-slate-100/50 dark:shadow-none text-slate-800 dark:text-slate-100"
         id="sidebar-container"
       >
         {/* Header Branding */}
@@ -240,7 +240,7 @@ export default function Sidebar({
         </div>
 
         {/* Action: New Chat Button */}
-        <div className="p-4 space-y-3" id="sidebar-actions">
+        <div className="p-4 space-y-3 shrink-0" id="sidebar-actions">
           <button
             onClick={() => {
               onNewChat();
@@ -294,8 +294,8 @@ export default function Sidebar({
           </button>
         </div>
 
-        {/* Chat History */}
-        <div className="flex-1 px-3 py-2 space-y-4" id="chat-history-scroll-container">
+        {/* Scrollable Chat History */}
+        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-4" id="chat-history-scroll-container">
           
           {/* Search Chats Row */}
           {chats.length > 0 && (
@@ -461,7 +461,7 @@ export default function Sidebar({
         </div>
 
         {/* Sidebar Footer with interactive Gemini API Key Secret Box */}
-        <div className="p-4 border-t border-slate-100/40 dark:border-slate-800/40 bg-white/35 dark:bg-slate-900/35 backdrop-blur-md" id="sidebar-footer">
+        <div className="p-4 border-t border-slate-100/40 dark:border-slate-800/40 bg-white/35 dark:bg-slate-900/35 backdrop-blur-md shrink-0" id="sidebar-footer">
           {/* Google Play Compliant AI-generated content user reporting link */}
           <a
             href="https://docs.google.com/forms/d/e/1FAIpQLSeWnFSIQfBah8Je7kvxCtH3ksuotbB8xrqRM0_GvM-4BN9iGg/viewform?usp=header"
@@ -504,7 +504,7 @@ export default function Sidebar({
                 animate={{ height: "auto", opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={{ duration: 0.25 }}
-                className="overflow-hidden space-y-3 pt-1 pb-2 border-t border-slate-100/50 dark:border-slate-800/30"
+                className="overflow-y-auto max-h-[350px] space-y-3 pt-1 pb-2 border-t border-slate-100/50 dark:border-slate-800/30 pr-1 scrollbar-thin"
                 id="expanded-settings"
               >
                 {/* Theme Toggle Button (Request: light/dark theme toggle button should only be placed inside this Settings menu) */}
