@@ -214,7 +214,7 @@ export default function Sidebar({
         id="sidebar-container"
       >
         {/* Header Branding */}
-        <div className="p-5 flex items-center justify-between border-b border-slate-100/40 dark:border-slate-800/30" id="sidebar-header">
+        <div className="p-5 flex items-center justify-between border-b border-slate-100/40 dark:border-slate-800/30 shrink-0" id="sidebar-header">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-2xl bg-slate-950 dark:bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-slate-950/10">
               <Sparkles className="w-6 h-6 text-indigo-300 dark:text-indigo-100" />

@@ -178,6 +178,33 @@ export default function ChatArea({
   const recognitionRef = useRef<any>(null);
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const hasPermissionErrorRef = useRef<boolean>(false);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+
+  const stopMicrophoneStream = () => {
+    if (mediaStreamRef.current) {
+      try {
+        mediaStreamRef.current.getTracks().forEach((track) => {
+          track.stop();
+        });
+      } catch (e) {
+        console.error("Error stopping media tracks:", e);
+      }
+      mediaStreamRef.current = null;
+    }
+  };
+
+  const stopSpeechRecognition = () => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (e) {}
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+      recognitionRef.current = null;
+    }
+    stopMicrophoneStream();
+  };
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -186,19 +213,19 @@ export default function ChatArea({
 
   // Handle active listening/speaking toggling based on voiceModeActive or muting state
   useEffect(() => {
-    if (voiceModeActive && !isMicMuted && voiceState !== "speaking" && voiceState !== "thinking" && !isLoading) {
-      setVoiceState("listening");
-      startSpeechRecognition();
-    } else if (!voiceModeActive) {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (e) {}
+    if (voiceModeActive && !isMicMuted) {
+      if (voiceState !== "speaking" && voiceState !== "thinking" && !isLoading) {
+        setVoiceState("listening");
+        startSpeechRecognition();
       }
-      if (window.speechSynthesis) {
-        window.speechSynthesis.cancel();
+    } else {
+      stopSpeechRecognition();
+      if (!voiceModeActive) {
+        if (window.speechSynthesis) {
+          window.speechSynthesis.cancel();
+        }
+        setVoiceState("idle");
       }
-      setVoiceState("idle");
     }
   }, [voiceModeActive, isMicMuted]);
 
@@ -216,27 +243,21 @@ export default function ChatArea({
   useEffect(() => {
     if (isLoading && voiceModeActive) {
       setVoiceState("thinking");
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (e) {}
-      }
+      stopSpeechRecognition();
     }
   }, [isLoading, voiceModeActive]);
 
-  // Component cleanup
+  // Stop and release when switching tasks/chats or component unmounts or Voice Modal closes
   useEffect(() => {
     return () => {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (e) {}
-      }
+      setVoiceModeActive(false);
+      stopSpeechRecognition();
       if (window.speechSynthesis) {
         window.speechSynthesis.cancel();
       }
+      setVoiceState("idle");
     };
-  }, []);
+  }, [activeChatTitle]);
 
   const handleTriggerFilePicker = () => {
     fileInputRef.current?.click();
@@ -271,11 +292,7 @@ export default function ChatArea({
   };
 
   const startSpeechRecognition = () => {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (e) {}
-    }
+    stopSpeechRecognition();
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -290,6 +307,21 @@ export default function ChatArea({
     recognitionRef.current = recognition;
     recognition.continuous = false;
     recognition.interimResults = true;
+
+    // Explicitly request user media to have direct track.stop() capability and real mic indicator control
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then((stream) => {
+          if (recognitionRef.current === recognition) {
+            mediaStreamRef.current = stream;
+          } else {
+            stream.getTracks().forEach(track => track.stop());
+          }
+        })
+        .catch((err) => {
+          console.warn("Failed to get audio stream:", err);
+        });
+    }
 
     const targetCode = LANGUAGE_CODES[vAstraLanguage]?.recognition || "en-IN";
     recognition.lang = targetCode;
@@ -316,7 +348,7 @@ export default function ChatArea({
       if (finalTranscript.trim()) {
         onSendMessage(finalTranscript.trim());
         setVoiceState("thinking");
-        recognition.stop();
+        stopSpeechRecognition();
       }
     };
 
@@ -326,15 +358,18 @@ export default function ChatArea({
         hasPermissionErrorRef.current = true;
         setVoiceState("idle");
         setVoiceAssistantTranscript("Microphone access is blocked. Please allow microphone permission in your browser URL bar or open the app in a new tab.");
+        stopSpeechRecognition();
       }
     };
 
     recognition.onend = () => {
       setTimeout(() => {
-        if (voiceModeActive && !isMicMuted && !isLoading && !currentUtteranceRef.current && !hasPermissionErrorRef.current) {
+        if (recognitionRef.current === recognition && voiceModeActive && !isMicMuted && !isLoading && !currentUtteranceRef.current && !hasPermissionErrorRef.current) {
           try {
             recognition.start();
           } catch (e) {}
+        } else if (recognitionRef.current === recognition) {
+          stopMicrophoneStream();
         }
       }, 600);
     };
@@ -362,11 +397,7 @@ export default function ChatArea({
     const targetCode = LANGUAGE_CODES[languageName]?.synthesis || "en-IN";
     utterance.lang = targetCode;
     
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (e) {}
-    }
+    stopSpeechRecognition();
 
     utterance.onstart = () => {
       setVoiceState("speaking");
