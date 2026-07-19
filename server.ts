@@ -180,18 +180,18 @@ async function startServer() {
       // 4. Generate content based on selected mode
       const selectedMode = aiMode || "standard";
       let modeDirective = "";
-      let modelCandidates = ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite"];
+      let modelCandidates = ["gemini-3.5-flash", "gemini-3.1-flash-lite"];
 
       if (selectedMode === "thinking") {
         modeDirective = `\n\n[Mode: Thinking Activated]\n- You are operating in Advanced Reasoning, Coding, and Mathematical Thinking mode.\n- Focus on depth, extreme precision, and bulletproof logic. Write clear, detailed, and structured steps.\n- CRITICAL: You must explicitly walk through your reasoning step-by-step under a "### 💭 Analysis & Thought Process" header first, before presenting your clean, optimal final code/math answer.`;
-        modelCandidates = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-3.1-flash-lite"];
+        modelCandidates = ["gemini-3.5-flash", "gemini-3.1-flash-lite"];
       } else if (selectedMode === "medium") {
         modeDirective = `\n\n[Mode: Medium Activated]\n- You are operating in Balanced All-Rounder Help mode.\n- Deliver beautifully detailed, well-rounded, and comprehensive explanations.\n- Frame complex topics elegantly and cover necessary sub-elements with high contextual nuance.`;
-        modelCandidates = ["gemini-2.5-flash", "gemini-3.5-flash"];
+        modelCandidates = ["gemini-3.5-flash", "gemini-3.1-flash-lite"];
       } else {
         // "standard"
         modeDirective = `\n\n[Mode: Standard Activated]\n- You are operating in Standard Companion mode (fast, direct, and conversational).\n- Focus on response speed, directness, and highly refined summaries.\n- Deliver the answers eloquently and directly, without unnecessary preamble.`;
-        modelCandidates = ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite"];
+        modelCandidates = ["gemini-3.5-flash", "gemini-3.1-flash-lite"];
       }
 
       // Short, concise response behavior directive by default

@@ -393,11 +393,30 @@ export default function App() {
       });
 
       if (!response.ok) {
-        const errJson = await response.json().catch(() => ({}));
-        throw new Error(errJson.error || "Failed to retrieve generated response from the Astra proxy.");
+        const text = await response.text().catch(() => "");
+        let errorMessage = "Failed to retrieve generated response from the Astra proxy.";
+        if (text) {
+          try {
+            const errJson = JSON.parse(text);
+            errorMessage = errJson.error || errorMessage;
+          } catch {
+            errorMessage = text || errorMessage;
+          }
+        }
+        throw new Error(errorMessage);
       }
 
-      const data = await response.json();
+      const responseTextContent = await response.text();
+      if (!responseTextContent) {
+        throw new Error("Received an empty response from the server. Please check your credentials or network status.");
+      }
+
+      let data;
+      try {
+        data = JSON.parse(responseTextContent);
+      } catch (parseErr) {
+        throw new Error("Unable to parse server response as JSON. Please ensure the server is operating correctly.");
+      }
 
       // Create assistant response message
       const assistantMessage: Message = {

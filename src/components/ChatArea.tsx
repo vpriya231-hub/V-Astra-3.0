@@ -498,10 +498,10 @@ export default function ChatArea({
           </div>
         </div>
 
-        {/* Premium Badge indicating system status */}
+        {/* System status badge */}
         <div className="flex items-center gap-2" id="chat-header-badge">
           <span className="hidden sm:inline-block text-[10px] font-mono uppercase tracking-wider text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-900 border border-slate-100/50 dark:border-slate-800/40 px-2 py-1 rounded-md">
-            gemini-2.5-flash
+            gemini-3.5-flash
           </span>
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" title="System online" />
         </div>
