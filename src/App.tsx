@@ -3,13 +3,31 @@ import Onboarding from "./components/Onboarding";
 import Sidebar from "./components/Sidebar";
 import ChatArea from "./components/ChatArea";
 import RatingModal from "./components/RatingModal";
-import { ChatHistoryItem, Message, UserProfile } from "./types";
+import SettingsPage from "./components/SettingsPage";
+import { ChatHistoryItem, ConnectorConfig, Message, UserProfile } from "./types";
 import { Sparkles } from "lucide-react";
 import TranslationModal from "./components/TranslationModal";
 import TranslationTransition from "./components/TranslationTransition";
+import VFlowPage from "./components/VFlowPage";
+import { useVFlowScheduler } from "./hooks/useVFlowScheduler";
 import { Language, t } from "./translations";
+import {
+  loadConnectors,
+  saveConnectors,
+  processConnectorIntent,
+  parseOAuthCallback,
+  fetchUserInfo,
+  getCustomClientIds,
+} from "./lib/connectors";
 
 export default function App() {
+  // Connectors State
+  const [connectors, setConnectors] = useState<ConnectorConfig[]>(() => loadConnectors());
+
+  const handleUpdateConnectors = (updated: ConnectorConfig[]) => {
+    setConnectors(updated);
+    saveConnectors(updated);
+  };
   // 1. Core Local Storage States
   const [profile, setProfile] = useState<UserProfile>(() => {
     const saved = localStorage.getItem("v_astra_user_profile");
@@ -59,6 +77,148 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [ratingModalOpen, setRatingModalOpen] = useState(false);
+
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>(() => {
+    return localStorage.getItem("v_astra_selected_voice") || "default";
+  });
+
+  const handleVoiceChange = (voiceURI: string) => {
+    setSelectedVoiceURI(voiceURI);
+    localStorage.setItem("v_astra_selected_voice", voiceURI);
+  };
+
+  // View state: 'chat', 'v_flow', or 'settings'
+  const [currentView, setCurrentView] = useState<"chat" | "v_flow" | "settings">(
+    window.location.pathname === "/settings" || window.location.hash === "#settings"
+      ? "settings"
+      : window.location.pathname === "/v_flow" || window.location.hash === "#v_flow"
+      ? "v_flow"
+      : "chat"
+  );
+  const [globalToast, setGlobalToast] = useState<string | null>(null);
+
+  // Handle browser back / forward navigation and URL state sync
+  useEffect(() => {
+    const handlePopState = () => {
+      if (window.location.pathname === "/settings" || window.location.hash === "#settings") {
+        setCurrentView("settings");
+      } else if (window.location.pathname === "/v_flow" || window.location.hash === "#v_flow") {
+        setCurrentView("v_flow");
+      } else {
+        setCurrentView("chat");
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (currentView === "settings") {
+      if (window.location.pathname !== "/settings") {
+        window.history.pushState({}, "", "/settings");
+      }
+    } else if (currentView === "v_flow") {
+      if (window.location.pathname !== "/v_flow") {
+        window.history.pushState({}, "", "/v_flow");
+      }
+    } else {
+      if (window.location.pathname !== "/") {
+        window.history.pushState({}, "", "/");
+      }
+    }
+  }, [currentView]);
+
+  const showGlobalToast = (msg: string) => {
+    setGlobalToast(msg);
+    setTimeout(() => {
+      setGlobalToast((prev) => (prev === msg ? null : prev));
+    }, 4500);
+  };
+
+  // OAuth Callback Handler for Client-Side Redirects / OAuth Codes
+  useEffect(() => {
+    // 1. Check Notion OAuth Code search query callback
+    const searchParams = new URLSearchParams(window.location.search);
+    const code = searchParams.get("code");
+    const state = searchParams.get("state");
+
+    if (code && (state === "notion" || !state)) {
+      const customIds = getCustomClientIds();
+      fetch("/api/auth/notion/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code,
+          redirect_uri: "https://v-astra-ai.ai.studio",
+          custom_client_id: customIds.notionClientId,
+          custom_client_secret: customIds.notionClientSecret,
+        }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.access_token) {
+            const token = data.access_token;
+            const workspaceName = data.workspace_name || data.workspace_icon || "Notion Workspace";
+            const updated = connectors.map((c) => {
+              if (c.id === "notion") {
+                return {
+                  ...c,
+                  connected: true,
+                  active: true,
+                  accessToken: token,
+                  userEmail: workspaceName,
+                };
+              }
+              return c;
+            });
+            handleUpdateConnectors(updated);
+            showGlobalToast(`Successfully connected to Notion Workspace: ${workspaceName}!`);
+            window.history.replaceState({}, document.title, window.location.pathname);
+          } else {
+            console.error("Notion code exchange error:", data);
+            showGlobalToast(`Notion authentication error: ${data.error || data.message || "Code exchange failed"}`);
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        })
+        .catch((err) => {
+          console.error("Error exchanging Notion code:", err);
+          showGlobalToast("Failed to complete Notion OAuth exchange.");
+          window.history.replaceState({}, document.title, window.location.pathname);
+        });
+      return;
+    }
+
+    // 2. Standard Google/GitHub Implicit Hash/Token Callback
+    const { connectorId, token } = parseOAuthCallback();
+    if (connectorId && token) {
+      fetchUserInfo(connectorId, token).then((userEmail) => {
+        const updated = connectors.map((c) => {
+          if (c.id === connectorId) {
+            return {
+              ...c,
+              connected: true,
+              active: true,
+              accessToken: token,
+              userEmail: userEmail || "Connected User",
+            };
+          }
+          return c;
+        });
+        handleUpdateConnectors(updated);
+        showGlobalToast(`Successfully connected to ${connectorId.replace("_", " ")}!`);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      });
+    }
+  }, []);
+
+  // Background V Flow Task Scheduler Execution
+  useVFlowScheduler({
+    userName: profile.name,
+    onTaskExecuted: (task) => {
+      showGlobalToast(`⚡ V Flow task executed by Gemini! (${task.prompt.slice(0, 30)}...)`);
+    },
+  });
 
   // Interface Translation states (V-Trans)
   const [interfaceLanguage, setInterfaceLanguage] = useState<string>(() => {
@@ -145,14 +305,17 @@ export default function App() {
 
   // 3. Side Actions
   const handleOnboardingComplete = (name: string) => {
-    setProfile({
+    setProfile((prev) => ({
+      ...prev,
       name,
       onboarded: true,
-      joinedAt: new Date().toISOString(),
-      primary_language: "English (India)",
-      secondary_language: "Malayalam (മലയാളം)",
-      v_astra_language: "English (India)",
-    });
+      joinedAt: prev.joinedAt || new Date().toISOString(),
+      primary_language: prev.primary_language || "English (India)",
+      secondary_language: prev.secondary_language || "Malayalam (മലയാളം)",
+      v_astra_language: prev.v_astra_language || "English (India)",
+    }));
+    setCurrentView("chat");
+    showGlobalToast(`Welcome back, ${name}!`);
   };
 
   // Synchronize/Fetch saved language preferences from the backend database when user is loaded
@@ -256,30 +419,15 @@ export default function App() {
   };
 
   const handleResetUser = () => {
-    setProfile({
+    setProfile((prev) => ({
+      ...prev,
       name: "",
       onboarded: false,
-      joinedAt: "",
-      primary_language: "English (India)",
-      secondary_language: "Malayalam (മലയാളം)",
-      v_astra_language: "English (India)",
-    });
-    setActiveChatId(null);
-    setChats([]);
-    setApiKey("");
+    }));
     setIsReturningUser(false);
-    setTheme("light");
-    setWebSearchEnabled(true);
-    setInterfaceLanguage("English");
-    localStorage.removeItem("v_astra_user_profile");
-    localStorage.removeItem("v_astra_chats");
-    localStorage.removeItem("v_astra_api_key");
-    localStorage.removeItem("v_astra_active_chat_id");
-    localStorage.removeItem("v_astra_is_returning");
-    localStorage.removeItem("v_astra_theme");
-    localStorage.removeItem("v_astra_web_search_enabled");
-    localStorage.removeItem("v_astra_interface_language");
     sessionStorage.removeItem("v_astra_session_loaded");
+    localStorage.removeItem("v_astra_is_returning");
+    showGlobalToast("Onboarding name reset successfully");
   };
 
   const handleNewChat = () => {
@@ -292,10 +440,12 @@ export default function App() {
     };
     setChats((prev) => [newChat, ...prev]);
     setActiveChatId(newId);
+    setCurrentView("chat");
   };
 
   const handleSelectChat = (id: string) => {
     setActiveChatId(id);
+    setCurrentView("chat");
   };
 
   const handleRenameChat = (id: string, newTitle: string) => {
@@ -319,6 +469,9 @@ export default function App() {
   const handleClearAllChats = () => {
     setChats([]);
     setActiveChatId(null);
+    localStorage.removeItem("v_astra_chats");
+    localStorage.removeItem("v_astra_active_chat_id");
+    showGlobalToast("Chat history cleared");
   };
 
   const handleSendMessage = async (content: string, image?: { mimeType: string; data: string }) => {
@@ -371,8 +524,31 @@ export default function App() {
     setIsLoading(true);
 
     try {
-      // Build proper system instructions incorporating user's configured name
-      const systemInstruction = `You are V-Astra AI, a highly smart, sophisticated, and polished AI companion with an elegant minimalist designer theme. Address the user gracefully as ${profile.name}. Keep your responses beautifully styled, utilizing markdown where helpful. Speak eloquently, professionally, and directly without fluff.`;
+      // Execute Intelligent Connector Intent layer before generating LLM response
+      let connectorContext = "";
+      try {
+        const fetchedContext = await processConnectorIntent(content, connectors);
+        if (fetchedContext) {
+          connectorContext = `\n\n[EXTERNAL CONNECTORS REAL-TIME CONTEXT & API RESULTS]:\n${fetchedContext}\n\nINSTRUCTION FOR V-ASTRA AI: You have active real-time data retrieved from connected external services above. Summarize, explain, or perform requested analysis accurately using this data.`;
+        }
+      } catch (connErr) {
+        console.warn("Error processing connector intent:", connErr);
+      }
+
+      // Build active connectors list
+      const activeConnectorsList = connectors
+        .filter((c) => c.connected && c.active && c.accessToken)
+        .map((c) => c.name)
+        .join(", ");
+
+      const writePermissionsDirective = `\n\n[WRITE/CREATE/SEND PERMISSIONS DIRECTIVE]: You have full permission to CREATE, INSERT, and EDIT content in the user's Notion, Google Calendar, Google Tasks, Google Forms, and SEND messages to Telegram when requested. NEVER state that you cannot send messages or modify data.`;
+
+      const connectorOverrideInstruction = activeConnectorsList
+        ? `\n\n[ACTIVE CONNECTORS DIRECTIVE]: You are actively connected to the user's services: ${activeConnectorsList}.${writePermissionsDirective}\nCRITICAL INSTRUCTION: You MUST NEVER state or reply "I cannot browse the web", "I cannot summarize YouTube videos", "I cannot search YouTube", "I do not have real-time access", "I cannot access live internet data", "I cannot check current weather", "I cannot access live weather data", "I cannot send messages to Telegram", "I cannot alert you on Telegram", "I cannot solve math problems with Wolfram Alpha", "I cannot search research papers with SciSpace or Consensus", "I cannot forward to Telegram", "I cannot access your emails", "I cannot read your documents", "I cannot access GitHub", "I cannot read your Notion notes", "I cannot access your calendar", "I cannot access your tasks", "I cannot create Google Forms", "I cannot summarize Google Forms", "I cannot trigger custom webhooks", "I cannot access custom REST APIs", or similar statements. The application automatically invokes the respective connector APIs (Consensus Evidence Search, SciSpace / Scientific Web-Search Module, Wolfram Alpha API, Telegram Bot API, Open-Meteo Live Weather API, YouTube Data API v3, Live Web Search API, Gmail API, Google Docs API, Google Drive API, Google Sheets API, Google Calendar API, Google Tasks API, Google Forms API, GitHub API, Notion API, Custom REST API / Webhooks) whenever connectors are active and injects real-time data or execution results into your context. Use the provided real-time connector context above to answer the user's questions or confirm sent Telegram messages, research paper analysis, evidence consensus, math computation results, chat summaries, code forwards, alerts, live weather conditions, 7-day forecasts, custom API data, webhook execution, YouTube video summaries, web search results, emails, documents, spreadsheets, files, calendar events, task lists, to-dos, Google Forms, GitHub repositories, or Notion notes directly and accurately.`
+        : `\n\n[CONNECTORS STATUS]: No external connectors are currently active.${writePermissionsDirective} If the user asks you to send chat summaries to Telegram, search evidence-based papers via Consensus, search/analyze scientific research papers via SciSpace, solve complex math or science problems via Wolfram Alpha, forward code to Telegram, alert on Telegram, fetch live weather, temperature, 7-day weather forecasts, summarize YouTube videos, search YouTube videos, read live web search data, emails, Google Docs, Drive files, Sheets, Google Calendar events, Google Tasks, Google Forms, GitHub repos, Notion notes/tasks, or trigger custom webhooks/REST APIs, inform them gracefully that they can connect their account in the Connectors section of Settings.`;
+
+      // Build proper system instructions incorporating user's configured name and connector context
+      const systemInstruction = `You are V-Astra AI, a highly smart, sophisticated, and polished AI companion with an elegant minimalist designer theme. Address the user gracefully as ${profile.name}. Keep your responses beautifully styled, utilizing markdown where helpful. Speak eloquently, professionally, and directly without fluff. You have full permission to CREATE, INSERT, and EDIT content in the user's Notion, Google Calendar, Google Tasks, Google Forms, and SEND messages to Telegram when requested. NEVER state that you can only read/view or cannot modify data or send messages.${connectorContext}${connectorOverrideInstruction}`;
 
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -465,7 +641,29 @@ export default function App() {
 
   // If the user hasn't finished the Onboarding Flow, display Onboarding
   if (!profile.onboarded) {
-    return <Onboarding onComplete={handleOnboardingComplete} />;
+    return (
+      <div className="relative min-h-screen">
+        <Onboarding onComplete={handleOnboardingComplete} />
+        {globalToast && (
+          <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full p-4 rounded-2xl bg-slate-900/95 dark:bg-slate-800/95 text-white shadow-2xl border border-indigo-500/40 backdrop-blur-md animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 shrink-0">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0 text-xs leading-relaxed whitespace-pre-wrap font-sans">
+                {globalToast}
+              </div>
+              <button
+                onClick={() => setGlobalToast(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   }
 
   const currentActiveChat = chats.find((chat) => chat.id === activeChatId) || null;
@@ -499,24 +697,89 @@ export default function App() {
         onVAstraLanguageChange={handleVAstraLanguageChange}
         interfaceLanguage={interfaceLanguage}
         onOpenTranslationModal={() => setShowTranslationModal(true)}
+        onOpenVFlow={() => setCurrentView("v_flow")}
+        onOpenSettings={() => setCurrentView("settings")}
       />
 
       {/* Main Interactive Screen Segment */}
       <main className="flex-1 flex flex-col h-full min-w-0" id="main-content-layout">
-        <ChatArea
-          messages={currentMessages}
-          activeChatTitle={currentTitle}
-          onSendMessage={handleSendMessage}
-          isLoading={isLoading}
-          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          userName={profile.name}
-          isReturningUser={isReturningUser}
-          aiMode={aiMode}
-          onAiModeChange={setAiMode}
-          vAstraLanguage={profile.v_astra_language || "English (India)"}
-          interfaceLanguage={interfaceLanguage}
-        />
+        {currentView === "v_flow" ? (
+          <VFlowPage
+            onBackToChat={() => setCurrentView("chat")}
+            userName={profile.name}
+            showToast={showGlobalToast}
+          />
+        ) : currentView === "settings" ? (
+          <SettingsPage
+            onBack={() => setCurrentView("chat")}
+            userName={profile.name}
+            theme={theme}
+            onThemeToggle={() => setTheme(theme === "light" ? "dark" : "light")}
+            webSearchEnabled={webSearchEnabled}
+            onWebSearchToggle={() => setWebSearchEnabled(!webSearchEnabled)}
+            primaryLanguage={profile.primary_language || "English (India)"}
+            secondaryLanguage={profile.secondary_language || "Malayalam (മലയാളം)"}
+            onLanguageChange={handleLanguageChange}
+            vAstraLanguage={profile.v_astra_language || "English (India)"}
+            onVAstraLanguageChange={handleVAstraLanguageChange}
+            interfaceLanguage={interfaceLanguage}
+            onOpenTranslationModal={() => setShowTranslationModal(true)}
+            onOpenRatingModal={() => setRatingModalOpen(true)}
+            onResetUser={handleResetUser}
+            chatsCount={chats.length}
+            onClearAllChats={handleClearAllChats}
+            selectedVoiceURI={selectedVoiceURI}
+            onVoiceChange={handleVoiceChange}
+            apiKey={apiKey}
+            onApiKeyChange={(key) => {
+              setApiKey(key);
+              if (key) {
+                localStorage.setItem("v_astra_api_key", key);
+              } else {
+                localStorage.removeItem("v_astra_api_key");
+              }
+            }}
+            connectors={connectors}
+            onUpdateConnectors={handleUpdateConnectors}
+            showToast={showGlobalToast}
+          />
+        ) : (
+          <ChatArea
+            messages={currentMessages}
+            activeChatTitle={currentTitle}
+            onSendMessage={handleSendMessage}
+            isLoading={isLoading}
+            onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+            userName={profile.name}
+            isReturningUser={isReturningUser}
+            aiMode={aiMode}
+            onAiModeChange={setAiMode}
+            vAstraLanguage={profile.v_astra_language || "English (India)"}
+            interfaceLanguage={interfaceLanguage}
+            selectedVoiceURI={selectedVoiceURI}
+          />
+        )}
       </main>
+
+      {/* Global Toast Banner for V Flow Execution Alerts */}
+      {globalToast && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full p-4 rounded-2xl bg-slate-900/95 dark:bg-slate-800/95 text-white shadow-2xl border border-indigo-500/40 backdrop-blur-md animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 shrink-0">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div className="flex-1 min-w-0 text-xs leading-relaxed whitespace-pre-wrap font-sans">
+              {globalToast}
+            </div>
+            <button
+              onClick={() => setGlobalToast(null)}
+              className="text-slate-400 hover:text-white p-1 rounded-lg"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modern Google Play In-App Rating Modal */}
       <RatingModal

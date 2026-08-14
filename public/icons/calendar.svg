@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+      <g transform="translate(66, 66)">
+        <!-- Base Tile -->
+        <rect x="0" y="0" width="380" height="380" rx="80" fill="#2684FC"/>
+        <!-- Light blue top banner -->
+        <path d="M 0 80 C 0 35 35 0 80 0 L 300 0 C 345 0 380 35 380 80 L 380 115 L 0 115 Z" fill="#82B1FF"/>
+        <!-- Number 31 -->
+        <text x="190" y="305" text-anchor="middle" fill="#FFFFFF" font-size="200" font-weight="900" font-family="system-ui, -apple-system, sans-serif" letter-spacing="-6">31</text>
+      </g>
+    </svg>

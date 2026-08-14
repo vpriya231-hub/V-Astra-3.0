@@ -4,10 +4,15 @@ import Markdown from "react-markdown";
 import { 
   Menu, Send, Sparkles, User, AlertCircle, HelpCircle, 
   ArrowUpRight, Bot, Compass, MessageSquare, CornerDownLeft,
-  ChevronDown, Plus, Mic, X, Image, Camera, Upload
+  ChevronDown, Plus, Mic, X, Image, Camera, Upload,
+  Share2, Download, Copy, FileText, Check, Loader2,
+  ThumbsUp, ThumbsDown, Volume2, VolumeX
 } from "lucide-react";
 import { Message } from "../types";
 import { t } from "../translations";
+import { printChatDocument, copyChatToClipboard, isAndroidWebView } from "../utils/shareUtils";
+import { AiResponseLoader } from "./AiResponseLoader";
+import { FeedbackModal } from "./FeedbackModal";
 
 interface ChatAreaProps {
   messages: Message[];
@@ -21,6 +26,7 @@ interface ChatAreaProps {
   onAiModeChange: (mode: "standard" | "medium" | "thinking") => void;
   vAstraLanguage: string;
   interfaceLanguage: string;
+  selectedVoiceURI?: string;
 }
 
 const STARTER_PROMPTS = [
@@ -165,13 +171,86 @@ export default function ChatArea({
   onAiModeChange,
   vAstraLanguage,
   interfaceLanguage,
+  selectedVoiceURI,
 }: ChatAreaProps) {
   const [input, setInput] = useState("");
   const [uploadedImage, setUploadedImage] = useState<{ mimeType: string; data: string; name: string } | null>(null);
   const [voiceModeActive, setVoiceModeActive] = useState(false);
   const [voiceState, setVoiceState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [voiceAssistantTranscript, setVoiceAssistantTranscript] = useState("");
   const [isMicMuted, setIsMicMuted] = useState(false);
+
+  // Share & Export states
+  const [isShareMenuOpen, setIsShareMenuOpen] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Feedback & Copy states
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+  const [feedbackInitialType, setFeedbackInitialType] = useState<"Liked" | "Disliked">("Liked");
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3800);
+  };
+
+  const handleCopySingleMessage = (content: string, id: string) => {
+    try {
+      navigator.clipboard.writeText(content);
+      setCopiedMessageId(id);
+      showToast("Copied to clipboard");
+      setTimeout(() => {
+        setCopiedMessageId((prev) => (prev === id ? null : prev));
+      }, 2500);
+    } catch (err) {
+      console.error("Failed to copy message:", err);
+      showToast("Failed to copy to clipboard");
+    }
+  };
+
+  const handleOpenFeedback = (type: "Liked" | "Disliked") => {
+    setFeedbackInitialType(type);
+    setIsFeedbackModalOpen(true);
+  };
+
+  const handleSharePdf = async () => {
+    if (messages.length === 0) return;
+    setIsShareMenuOpen(false);
+    setIsGeneratingPdf(true);
+    showToast("Preparing PDF for print/download...");
+
+    try {
+      // Check if inside Android WebView (AppCreator24) for telemetry/logging
+      const inWebView = isAndroidWebView();
+      if (inWebView) {
+        console.log("Exporting PDF inside Android WebView / AppCreator24 context");
+      }
+
+      const success = await printChatDocument(messages, activeChatTitle, userName);
+      if (success) {
+        showToast("PDF Print & Export View ready!");
+      } else {
+        showToast("Unable to generate PDF. Please try again.");
+      }
+    } catch (err) {
+      console.error("PDF generation or print failed gracefully:", err);
+      showToast("Unable to generate PDF. Please try again.");
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
+  const handleCopyText = async () => {
+    setIsShareMenuOpen(false);
+    const success = await copyChatToClipboard(messages, activeChatTitle, userName);
+    if (success) {
+      showToast("Chat copied to clipboard!");
+    } else {
+      showToast("Failed to copy chat text.");
+    }
+  };
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -381,7 +460,7 @@ export default function ChatArea({
     }
   };
 
-  const speakText = (text: string, languageName: string) => {
+  const speakText = (text: string, languageName: string, messageId?: string) => {
     if (!window.speechSynthesis) return;
     window.speechSynthesis.cancel();
 
@@ -391,6 +470,8 @@ export default function ChatArea({
       .replace(/\[.*?\]\(.*?\)/g, "")
       .trim();
 
+    if (!cleanText) return;
+
     const utterance = new SpeechSynthesisUtterance(cleanText);
     currentUtteranceRef.current = utterance;
     
@@ -399,12 +480,17 @@ export default function ChatArea({
     
     stopSpeechRecognition();
 
+    if (messageId) {
+      setSpeakingMessageId(messageId);
+    }
+
     utterance.onstart = () => {
       setVoiceState("speaking");
     };
 
     utterance.onend = () => {
       currentUtteranceRef.current = null;
+      setSpeakingMessageId(null);
       if (voiceModeActive && !isMicMuted) {
         setVoiceState("listening");
         startSpeechRecognition();
@@ -415,6 +501,7 @@ export default function ChatArea({
 
     utterance.onerror = () => {
       currentUtteranceRef.current = null;
+      setSpeakingMessageId(null);
       if (voiceModeActive && !isMicMuted) {
         setVoiceState("listening");
         startSpeechRecognition();
@@ -424,12 +511,35 @@ export default function ChatArea({
     };
 
     const voices = window.speechSynthesis.getVoices();
-    const matchingVoice = voices.find(v => v.lang.toLowerCase().replace("_", "-") === targetCode.toLowerCase() || v.lang.startsWith(targetCode.slice(0, 2)));
+    let matchingVoice: SpeechSynthesisVoice | undefined;
+
+    if (selectedVoiceURI && selectedVoiceURI !== "default") {
+      matchingVoice = voices.find(v => v.voiceURI === selectedVoiceURI || v.name === selectedVoiceURI);
+    }
+
+    if (!matchingVoice) {
+      matchingVoice = voices.find(v => v.lang.toLowerCase().replace("_", "-") === targetCode.toLowerCase() || v.lang.startsWith(targetCode.slice(0, 2)));
+    }
+
     if (matchingVoice) {
       utterance.voice = matchingVoice;
     }
     
     window.speechSynthesis.speak(utterance);
+  };
+
+  const handleToggleReadAloud = (messageId: string, content: string) => {
+    if (!window.speechSynthesis) return;
+
+    if (speakingMessageId === messageId) {
+      window.speechSynthesis.cancel();
+      currentUtteranceRef.current = null;
+      setSpeakingMessageId(null);
+      setVoiceState("idle");
+    } else {
+      const detectedLang = detectVoiceLanguage(content, vAstraLanguage);
+      speakText(content, detectedLang, messageId);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -498,14 +608,142 @@ export default function ChatArea({
           </div>
         </div>
 
-        {/* System status badge */}
-        <div className="flex items-center gap-2" id="chat-header-badge">
-          <span className="hidden sm:inline-block text-[10px] font-mono uppercase tracking-wider text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-900 border border-slate-100/50 dark:border-slate-800/40 px-2 py-1 rounded-md">
-            gemini-3.5-flash
-          </span>
-          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" title="System online" />
+        {/* Header Right Actions */}
+        <div className="flex items-center gap-3" id="chat-header-actions">
+          {/* Share Button (Active when messages exist) */}
+          {messages.length > 0 && (
+            <div className="relative">
+              <button
+                onClick={() => setIsShareMenuOpen(!isShareMenuOpen)}
+                disabled={isGeneratingPdf}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-50/90 dark:bg-slate-900/90 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-800/80 rounded-xl transition-all shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50"
+                title="Share or Export Chat"
+                aria-label="Share or Export Chat"
+                id="share-chat-btn"
+              >
+                {isGeneratingPdf ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
+                ) : (
+                  <Share2 className="w-3.5 h-3.5 text-indigo-500" />
+                )}
+                <span className="hidden sm:inline font-semibold">Share</span>
+              </button>
+
+              {/* Share Popover Menu */}
+              <AnimatePresence>
+                {isShareMenuOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setIsShareMenuOpen(false)}
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95, y: -6 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95, y: -6 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 mt-2 w-60 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl shadow-xl z-50 overflow-hidden p-1.5"
+                      id="share-popover-menu"
+                    >
+                      <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800/80 mb-1">
+                        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                          Share Session
+                        </p>
+                        <p className="text-xs text-slate-800 dark:text-slate-200 font-semibold truncate">
+                          {activeChatTitle || "Chat Session"}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={handleSharePdf}
+                        disabled={isGeneratingPdf}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 rounded-xl transition-colors text-left cursor-pointer disabled:opacity-50 group"
+                        id="share-as-pdf-btn"
+                      >
+                        <div className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 group-hover:scale-105 transition-transform">
+                          <FileText className="w-4 h-4" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">Share / Download as PDF</span>
+                          <span className="text-[10px] text-slate-400">Formatted session document</span>
+                        </div>
+                      </button>
+
+                      <button
+                        onClick={handleCopyText}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-emerald-50/70 dark:hover:bg-emerald-950/40 rounded-xl transition-colors text-left cursor-pointer group mt-0.5"
+                        id="copy-chat-text-btn"
+                      >
+                        <div className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 group-hover:scale-105 transition-transform">
+                          <Copy className="w-4 h-4" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">Copy Chat Text</span>
+                          <span className="text-[10px] text-slate-400">Plain text for quick pasting</span>
+                        </div>
+                      </button>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
+          {/* System status badge */}
+          <div className="flex items-center gap-2" id="chat-header-badge">
+            <span className="hidden sm:inline-block text-[10px] font-mono uppercase tracking-wider text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-900 border border-slate-100/50 dark:border-slate-800/40 px-2 py-1 rounded-md">
+              gemini-3.5-flash
+            </span>
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" title="System online" />
+          </div>
         </div>
       </header>
+
+      {/* Floating Toast Notification */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.9 }}
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 dark:bg-slate-100/95 backdrop-blur-md text-white dark:text-slate-900 text-xs font-medium px-4 py-2.5 rounded-2xl shadow-2xl border border-slate-800 dark:border-slate-200 flex items-center gap-2.5"
+            id="share-toast"
+          >
+            <div className="p-1 rounded-full bg-emerald-500/20 text-emerald-400 dark:text-emerald-600">
+              <Check className="w-3.5 h-3.5" />
+            </div>
+            <span>{toastMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* PDF Generation Loading Modal */}
+      <AnimatePresence>
+        {isGeneratingPdf && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4"
+            id="pdf-generating-modal"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-2xl flex items-center gap-4 max-w-sm w-full"
+            >
+              <div className="p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 shrink-0">
+                <Loader2 className="w-6 h-6 animate-spin" />
+              </div>
+              <div className="flex flex-col">
+                <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100">Preparing PDF...</h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Formatting conversation & pagination</p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Main Container: Chat Stream or Welcoming Dashboard */}
       <div className="flex-1 overflow-y-auto bg-slate-50/20 dark:bg-slate-950/20 px-4 py-6" id="chat-stream-viewport">
@@ -616,8 +854,72 @@ export default function ChatArea({
                         </div>
                       )}
                       
-                      <div className="mt-1 flex items-center justify-between text-[9px] text-slate-400 dark:text-slate-500 select-none">
+                      <div className="mt-2 pt-1.5 flex items-center justify-between border-t border-slate-100/80 dark:border-slate-800/80 text-[10px] text-slate-400 dark:text-slate-500 select-none">
                         <span>{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+
+                        {!isUser && (
+                          <div className="flex items-center gap-1.5" id={`message-actions-${message.id}`}>
+                            {/* Read Aloud Voice Button */}
+                            <button
+                              type="button"
+                              onClick={() => handleToggleReadAloud(message.id, message.content)}
+                              className={`p-1 rounded-md transition-colors flex items-center gap-1 ${
+                                speakingMessageId === message.id
+                                  ? "bg-indigo-100 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 font-medium"
+                                  : "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400"
+                              }`}
+                              title={speakingMessageId === message.id ? "Stop reading" : "Read response aloud"}
+                              aria-label={speakingMessageId === message.id ? "Stop reading response" : "Read response aloud"}
+                              id={`read-aloud-btn-${message.id}`}
+                            >
+                              {speakingMessageId === message.id ? (
+                                <VolumeX className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 animate-pulse" />
+                              ) : (
+                                <Volume2 className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+
+                            {/* Copy Button */}
+                            <button
+                              type="button"
+                              onClick={() => handleCopySingleMessage(message.content, message.id)}
+                              className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition-colors flex items-center gap-1"
+                              title="Copy response text"
+                              aria-label="Copy response"
+                              id={`copy-btn-${message.id}`}
+                            >
+                              {copiedMessageId === message.id ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+
+                            {/* Thumbs Up (Like) Button */}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenFeedback("Liked")}
+                              className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors flex items-center gap-1"
+                              title="Like response"
+                              aria-label="Like response"
+                              id={`like-btn-${message.id}`}
+                            >
+                              <ThumbsUp className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Thumbs Down (Dislike) Button */}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenFeedback("Disliked")}
+                              className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 transition-colors flex items-center gap-1"
+                              title="Dislike response"
+                              aria-label="Dislike response"
+                              id={`dislike-btn-${message.id}`}
+                            >
+                              <ThumbsDown className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -634,21 +936,46 @@ export default function ChatArea({
               {/* Server-Side Fetching Indicator */}
               {isLoading && (
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="flex items-start gap-3.5 justify-start"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-center gap-3 justify-start pl-1 py-1"
                   id="chat-loading-indicator"
                 >
-                  <div className="w-8 h-8 rounded-lg bg-slate-950 dark:bg-indigo-600 flex items-center justify-center text-white shrink-0 shadow-sm border border-slate-900/10 dark:border-indigo-500/20">
-                    <Bot className="w-4 h-4 text-indigo-300 dark:text-indigo-100" />
-                  </div>
-                  
-                  <div className="bg-white dark:bg-slate-900 rounded-2xl rounded-tl-none px-4 py-3 border border-slate-200/50 dark:border-slate-800 shadow-sm text-slate-500 dark:text-slate-400">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-slate-400 dark:bg-slate-600 animate-bounce" style={{ animationDelay: "0ms" }} />
-                      <span className="w-2 h-2 rounded-full bg-slate-400 dark:bg-slate-600 animate-bounce" style={{ animationDelay: "150ms" }} />
-                      <span className="w-2 h-2 rounded-full bg-slate-400 dark:bg-slate-600 animate-bounce" style={{ animationDelay: "300ms" }} />
+                  <div className="relative group">
+                    <div className="absolute -inset-0.5 rounded-full bg-gradient-to-tr from-indigo-500 via-purple-500 to-emerald-400 opacity-40 blur-xs animate-pulse" />
+                    <div className="relative w-8 h-8 rounded-full bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm flex items-center justify-center overflow-hidden p-1.5 shrink-0">
+                      <motion.img
+                        src="/logo.svg"
+                        alt="AI Logo"
+                        className="w-full h-full object-contain select-none pointer-events-none"
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                      />
                     </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/80 dark:bg-slate-900/80 border border-slate-200/60 dark:border-slate-800/80 backdrop-blur-md shadow-2xs">
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 tracking-wide font-sans">
+                      AI is thinking...
+                    </span>
+                    <div className="flex items-center gap-1 ml-0.5">
+                      <motion.span
+                        animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.1, 0.8] }}
+                        transition={{ duration: 1.2, repeat: Infinity, delay: 0 }}
+                        className="w-1.5 h-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400"
+                      />
+                      <motion.span
+                        animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.1, 0.8] }}
+                        transition={{ duration: 1.2, repeat: Infinity, delay: 0.2 }}
+                        className="w-1.5 h-1.5 rounded-full bg-purple-500 dark:bg-purple-400"
+                      />
+                      <motion.span
+                        animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.1, 0.8] }}
+                        transition={{ duration: 1.2, repeat: Infinity, delay: 0.4 }}
+                        className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400"
+                      />
+                    </div>
+                    <Sparkles className="w-3 h-3 text-indigo-500 dark:text-indigo-400 animate-pulse ml-0.5" />
                   </div>
                 </motion.div>
               )}
@@ -901,6 +1228,14 @@ export default function ChatArea({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Feedback Modal Popup */}
+      <FeedbackModal
+        isOpen={isFeedbackModalOpen}
+        initialType={feedbackInitialType}
+        onClose={() => setIsFeedbackModalOpen(false)}
+        onSubmitted={(msg) => showToast(msg)}
+      />
 
     </div>
   );

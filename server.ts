@@ -100,6 +100,473 @@ async function startServer() {
     }
   });
 
+  // API: Notion OAuth Token Exchange Handler
+  app.post("/api/auth/notion/token", async (req, res) => {
+    try {
+      const { code, redirect_uri, custom_client_id, custom_client_secret } = req.body;
+      if (!code) {
+        res.status(400).json({ error: "Missing required 'code' parameter for Notion OAuth." });
+        return;
+      }
+
+      const clientId = custom_client_id || process.env.VITE_NOTION_CLIENT_ID || process.env.NOTION_CLIENT_ID || "";
+      const clientSecret = custom_client_secret || process.env.NOTION_CLIENT_SECRET || process.env.VITE_NOTION_CLIENT_SECRET || "";
+
+      if (!clientId || !clientSecret) {
+        console.warn("[Notion OAuth] Warning: Client ID or Client Secret missing. Attempting token exchange with provided credentials.");
+      }
+
+      const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+
+      const response = await fetch("https://api.notion.com/v1/oauth/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Basic ${authHeader}`,
+          "Notion-Version": "2022-06-28",
+        },
+        body: JSON.stringify({
+          grant_type: "authorization_code",
+          code,
+          redirect_uri: redirect_uri || "https://v-astra-ai.ai.studio",
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        console.error("[Notion OAuth Exchange Error]:", data);
+        res.status(response.status).json(data);
+        return;
+      }
+
+      res.json(data);
+    } catch (err: any) {
+      console.error("Error in /api/auth/notion/token:", err);
+      res.status(500).json({ error: err?.message || "Internal server error exchanging Notion token." });
+    }
+  });
+
+  // API: Notion Search Proxy Endpoint
+  app.post("/api/notion/search", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) {
+        res.status(401).json({ error: "Missing Authorization header for Notion API." });
+        return;
+      }
+
+      const { query, filter, sort, page_size } = req.body;
+
+      const response = await fetch("https://api.notion.com/v1/search", {
+        method: "POST",
+        headers: {
+          "Authorization": authHeader,
+          "Content-Type": "application/json",
+          "Notion-Version": "2022-06-28",
+        },
+        body: JSON.stringify({
+          query: query || "",
+          sort: sort || { direction: "descending", timestamp: "last_edited_time" },
+          ...(filter ? { filter } : {}),
+          page_size: page_size || 10,
+        }),
+      });
+
+      const data = await response.json();
+      res.status(response.status).json(data);
+    } catch (err: any) {
+      console.error("Error in /api/notion/search proxy:", err);
+      res.status(500).json({ error: err?.message || "Internal server error in Notion search." });
+    }
+  });
+
+  // API: Notion Pages Creation Proxy Endpoint
+  app.post("/api/notion/pages", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) {
+        res.status(401).json({ error: "Missing Authorization header for Notion API." });
+        return;
+      }
+
+      const { parent, properties, children } = req.body;
+
+      const response = await fetch("https://api.notion.com/v1/pages", {
+        method: "POST",
+        headers: {
+          "Authorization": authHeader,
+          "Content-Type": "application/json",
+          "Notion-Version": "2022-06-28",
+        },
+        body: JSON.stringify({
+          parent,
+          properties,
+          ...(children ? { children } : {}),
+        }),
+      });
+
+      const data = await response.json();
+      res.status(response.status).json(data);
+    } catch (err: any) {
+      console.error("Error in /api/notion/pages proxy:", err);
+      res.status(500).json({ error: err?.message || "Internal server error in Notion page creation." });
+    }
+  });
+
+  // API: Notion Block Children Append Proxy Endpoint
+  app.patch("/api/notion/blocks/:id/children", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) {
+        res.status(401).json({ error: "Missing Authorization header for Notion API." });
+        return;
+      }
+
+      const { id } = req.params;
+      const { children } = req.body;
+
+      const response = await fetch(`https://api.notion.com/v1/blocks/${id}/children`, {
+        method: "PATCH",
+        headers: {
+          "Authorization": authHeader,
+          "Content-Type": "application/json",
+          "Notion-Version": "2022-06-28",
+        },
+        body: JSON.stringify({ children }),
+      });
+
+      const data = await response.json();
+      res.status(response.status).json(data);
+    } catch (err: any) {
+      console.error("Error in /api/notion/blocks children proxy:", err);
+      res.status(500).json({ error: err?.message || "Internal server error appending Notion block children." });
+    }
+  });
+
+  // API: Notion Page Update Proxy Endpoint
+  app.patch("/api/notion/pages/:id", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) {
+        res.status(401).json({ error: "Missing Authorization header for Notion API." });
+        return;
+      }
+
+      const { id } = req.params;
+      const { properties, archived } = req.body;
+
+      const response = await fetch(`https://api.notion.com/v1/pages/${id}`, {
+        method: "PATCH",
+        headers: {
+          "Authorization": authHeader,
+          "Content-Type": "application/json",
+          "Notion-Version": "2022-06-28",
+        },
+        body: JSON.stringify({ properties, archived }),
+      });
+
+      const data = await response.json();
+      res.status(response.status).json(data);
+    } catch (err: any) {
+      console.error("Error in /api/notion/pages update proxy:", err);
+      res.status(500).json({ error: err?.message || "Internal server error updating Notion page." });
+    }
+  });
+
+  // API: Live Web Search Endpoint (Tavily API + Free Search Fallback Engine)
+  app.post("/api/search", async (req, res) => {
+    try {
+      const { query, tavilyApiKey } = req.body;
+      if (!query || typeof query !== "string") {
+        res.status(400).json({ error: "Search query string is required." });
+        return;
+      }
+
+      const apiKey = tavilyApiKey || req.headers["x-tavily-key"] || process.env.TAVILY_API_KEY || process.env.VITE_TAVILY_API_KEY;
+
+      if (apiKey) {
+        try {
+          console.log(`[Web Search API] Executing search via Tavily API for query: "${query}"`);
+          const tavilyRes = await fetch("https://api.tavily.com/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              api_key: apiKey,
+              query: query,
+              search_depth: "basic",
+              include_answer: true,
+              max_results: 6,
+            }),
+          });
+
+          if (tavilyRes.ok) {
+            const tavilyData = await tavilyRes.json();
+            res.json({
+              query,
+              source: "tavily",
+              answer: tavilyData.answer || null,
+              results: (tavilyData.results || []).map((r: any) => ({
+                title: r.title || "Web Result",
+                url: r.url || "",
+                content: r.content || r.snippet || "",
+              })),
+            });
+            return;
+          } else {
+            const errJson = await tavilyRes.json().catch(() => ({}));
+            console.warn("[Tavily API Notice]: Tavily error, switching to free web search fallback:", errJson);
+          }
+        } catch (tavilyErr) {
+          console.warn("[Tavily API Warning]: Tavily request failed, switching to free web search fallback:", tavilyErr);
+        }
+      }
+
+      // Free Search Engine Fallback
+      console.log(`[Web Search API] Executing free search engine query for: "${query}"`);
+      
+      // 1. Fetch DuckDuckGo Instant Answer API
+      const ddgApiUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+      const ddgRes = await fetch(ddgApiUrl, {
+        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
+      }).catch(() => null);
+
+      const searchResults: Array<{ title: string; url: string; content: string }> = [];
+      let instantAnswer = "";
+
+      if (ddgRes && ddgRes.ok) {
+        const ddgData = await ddgRes.json().catch(() => ({}));
+        if (ddgData.AbstractText) {
+          instantAnswer = ddgData.AbstractText;
+          searchResults.push({
+            title: ddgData.Heading || query,
+            url: ddgData.AbstractURL || "https://duckduckgo.com",
+            content: ddgData.AbstractText,
+          });
+        }
+        if (Array.isArray(ddgData.RelatedTopics)) {
+          for (const topic of ddgData.RelatedTopics) {
+            if (topic.Text && topic.FirstURL) {
+              searchResults.push({
+                title: topic.Text.slice(0, 60) + "...",
+                url: topic.FirstURL,
+                content: topic.Text,
+              });
+            }
+          }
+        }
+      }
+
+      // 2. Fetch DuckDuckGo HTML for broader results if needed
+      if (searchResults.length < 3) {
+        try {
+          const htmlRes = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Accept-Language": "en-US,en;q=0.9",
+            },
+          });
+          if (htmlRes.ok) {
+            const htmlText = await htmlRes.text();
+            const resultBlocks = htmlText.split(/class="result\s+results_links/g).slice(1);
+            for (const block of resultBlocks.slice(0, 5)) {
+              const urlMatch = block.match(/href="([^"]+)"/);
+              const titleMatch = block.match(/class="result__a"[^>]*>(.*?)<\/a>/s);
+              const snippetMatch = block.match(/class="result__snippet"[^>]*>(.*?)<\/a>/s) || block.match(/class="result__snippet"[^>]*>(.*?)<\/td>/s);
+
+              if (urlMatch && titleMatch) {
+                let rawUrl = urlMatch[1];
+                if (rawUrl.includes("uddg=")) {
+                  const param = rawUrl.split("uddg=")[1]?.split("&")[0];
+                  if (param) rawUrl = decodeURIComponent(param);
+                }
+                const title = titleMatch[1].replace(/<[^>]+>/g, "").trim();
+                const snippet = snippetMatch ? snippetMatch[1].replace(/<[^>]+>/g, "").trim() : "";
+
+                if (title && rawUrl.startsWith("http")) {
+                  searchResults.push({
+                    title,
+                    url: rawUrl,
+                    content: snippet || title,
+                  });
+                }
+              }
+            }
+          }
+        } catch (htmlErr) {
+          console.warn("HTML search parse warning:", htmlErr);
+        }
+      }
+
+      res.json({
+        query,
+        source: "free_engine",
+        answer: instantAnswer || null,
+        results: searchResults.slice(0, 6),
+      });
+    } catch (err: any) {
+      console.error("Error in /api/search:", err);
+      res.status(500).json({ error: err?.message || "Failed to perform web search." });
+    }
+  });
+
+  // API: YouTube Video Details Endpoint
+  app.get("/api/youtube/video", async (req, res) => {
+    try {
+      const videoId = req.query.id as string;
+      if (!videoId) {
+        res.status(400).json({ error: "Missing required query parameter 'id'." });
+        return;
+      }
+
+      const authHeader = req.headers.authorization;
+      const apiKey = process.env.YOUTUBE_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+
+      let ytUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${encodeURIComponent(videoId)}`;
+      if (apiKey) {
+        ytUrl += `&key=${apiKey}`;
+      }
+
+      const fetchHeaders: Record<string, string> = { Accept: "application/json" };
+      if (authHeader) {
+        fetchHeaders.Authorization = authHeader;
+      }
+
+      const ytRes = await fetch(ytUrl, { headers: fetchHeaders });
+      const data = await ytRes.json();
+
+      if (!ytRes.ok) {
+        res.status(ytRes.status).json(data);
+        return;
+      }
+
+      res.json(data);
+    } catch (err: any) {
+      console.error("Error in /api/youtube/video:", err);
+      res.status(500).json({ error: err?.message || "Failed to fetch YouTube video details." });
+    }
+  });
+
+  // API: YouTube Video Search Endpoint
+  app.get("/api/youtube/search", async (req, res) => {
+    try {
+      const query = req.query.q as string;
+      if (!query) {
+        res.status(400).json({ error: "Missing required query parameter 'q'." });
+        return;
+      }
+
+      const authHeader = req.headers.authorization;
+      const apiKey = process.env.YOUTUBE_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+
+      let ytUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(query)}&maxResults=5`;
+      if (apiKey) {
+        ytUrl += `&key=${apiKey}`;
+      }
+
+      const fetchHeaders: Record<string, string> = { Accept: "application/json" };
+      if (authHeader) {
+        fetchHeaders.Authorization = authHeader;
+      }
+
+      const ytRes = await fetch(ytUrl, { headers: fetchHeaders });
+      const data = await ytRes.json();
+
+      if (!ytRes.ok) {
+        res.status(ytRes.status).json(data);
+        return;
+      }
+
+      res.json(data);
+    } catch (err: any) {
+      console.error("Error in /api/youtube/search:", err);
+      res.status(500).json({ error: err?.message || "Failed to search YouTube videos." });
+    }
+  });
+
+  // API: Custom Webhook / REST API Execution Endpoint
+  app.post("/api/custom-webhook", async (req, res) => {
+    try {
+      const { url, method = "GET", headers = {}, body, prompt } = req.body;
+      if (!url || typeof url !== "string") {
+        res.status(400).json({ error: "Missing required field 'url'." });
+        return;
+      }
+
+      console.log(`[Server] Custom Webhook Request: ${method.toUpperCase()} ${url}`);
+
+      const fetchHeaders: Record<string, string> = {
+        "User-Agent": "V-Astra-AI-Companion/1.0",
+        "Accept": "application/json, text/plain, */*",
+        ...(typeof headers === "object" && headers !== null ? headers : {})
+      };
+
+      const fetchOptions: RequestInit = {
+        method: method.toUpperCase(),
+        headers: fetchHeaders,
+      };
+
+      if (method.toUpperCase() === "POST" && body !== undefined) {
+        fetchOptions.body = typeof body === "string" ? body : JSON.stringify(body);
+        if (!fetchHeaders["Content-Type"] && !fetchHeaders["content-type"]) {
+          fetchHeaders["Content-Type"] = "application/json";
+        }
+      }
+
+      const response = await fetch(url, fetchOptions);
+      const contentType = response.headers.get("content-type") || "";
+      let responseData: any;
+
+      if (contentType.includes("application/json")) {
+        responseData = await response.json().catch(() => null);
+      } else {
+        responseData = await response.text().catch(() => "");
+      }
+
+      if (!response.ok) {
+        res.status(response.status).json({
+          error: `HTTP ${response.status} ${response.statusText}`,
+          status: response.status,
+          data: responseData
+        });
+        return;
+      }
+
+      res.json({
+        status: response.status,
+        data: responseData
+      });
+    } catch (err: any) {
+      console.error("Error in /api/custom-webhook:", err);
+      res.status(500).json({ error: err?.message || "Failed to execute custom webhook request." });
+    }
+  });
+
+  // API: Wolfram Alpha Query Proxy
+  app.get("/api/wolfram", async (req, res) => {
+    try {
+      const query = (req.query.q as string) || "";
+      if (!query.trim()) {
+        res.status(400).json({ error: "Query parameter 'q' is required." });
+        return;
+      }
+      const appId = process.env.VITE_WOLFRAM_APP_ID || process.env.WOLFRAM_APP_ID || "DEMO";
+      const url = `https://api.wolframalpha.com/v1/result?appid=${encodeURIComponent(appId)}&i=${encodeURIComponent(query.trim())}`;
+
+      const response = await fetch(url);
+      const resultText = await response.text();
+
+      if (!response.ok) {
+        res.status(response.status).send(resultText || "Wolfram Alpha computation unavailable.");
+        return;
+      }
+
+      res.send(resultText);
+    } catch (err: any) {
+      console.error("Error in /api/wolfram:", err);
+      res.status(500).json({ error: err?.message || "Wolfram Alpha request failed." });
+    }
+  });
+
   // API: Chat proxy using @google/genai
   app.post("/api/chat", async (req, res) => {
     try {
@@ -109,15 +576,15 @@ async function startServer() {
         return;
       }
 
-      // 1. Get the API Key from header or fallback to env variable
-      const clientApiKey = req.headers["x-gemini-key"];
+      // 1. Get the API Key from header or fallback to GEMINI_API_KEY1 env variable
+      const clientApiKey = req.headers["x-gemini-key"] || req.headers["x-custom-api-key"] || req.headers["x-api-key"];
       const apiKey = (typeof clientApiKey === "string" && clientApiKey.trim()) 
         ? clientApiKey.trim() 
-        : process.env.GEMINI_API_KEY;
+        : (process.env.GEMINI_API_KEY1 || process.env.GEMINI_API_KEY);
 
       if (!apiKey) {
         res.status(400).json({ 
-          error: "API key is missing. Please enter your Gemini API key in the V-Astra AI settings box (found in the Liquid Glass sidebar) to start chatting." 
+          error: "API key is missing. Please enter your Gemini API key in the V-Astra AI settings box (found in the Settings page or sidebar) to start chatting." 
         });
         return;
       }
@@ -180,18 +647,18 @@ async function startServer() {
       // 4. Generate content based on selected mode
       const selectedMode = aiMode || "standard";
       let modeDirective = "";
-      let modelCandidates = ["gemini-3.5-flash", "gemini-3.1-flash-lite"];
+      let modelCandidates = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash"];
 
       if (selectedMode === "thinking") {
         modeDirective = `\n\n[Mode: Thinking Activated]\n- You are operating in Advanced Reasoning, Coding, and Mathematical Thinking mode.\n- Focus on depth, extreme precision, and bulletproof logic. Write clear, detailed, and structured steps.\n- CRITICAL: You must explicitly walk through your reasoning step-by-step under a "### 💭 Analysis & Thought Process" header first, before presenting your clean, optimal final code/math answer.`;
-        modelCandidates = ["gemini-3.5-flash", "gemini-3.1-flash-lite"];
+        modelCandidates = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash"];
       } else if (selectedMode === "medium") {
         modeDirective = `\n\n[Mode: Medium Activated]\n- You are operating in Balanced All-Rounder Help mode.\n- Deliver beautifully detailed, well-rounded, and comprehensive explanations.\n- Frame complex topics elegantly and cover necessary sub-elements with high contextual nuance.`;
-        modelCandidates = ["gemini-3.5-flash", "gemini-3.1-flash-lite"];
+        modelCandidates = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash"];
       } else {
         // "standard"
         modeDirective = `\n\n[Mode: Standard Activated]\n- You are operating in Standard Companion mode (fast, direct, and conversational).\n- Focus on response speed, directness, and highly refined summaries.\n- Deliver the answers eloquently and directly, without unnecessary preamble.`;
-        modelCandidates = ["gemini-3.5-flash", "gemini-3.1-flash-lite"];
+        modelCandidates = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash"];
       }
 
       // Short, concise response behavior directive by default
@@ -266,13 +733,14 @@ async function startServer() {
 
               console.warn(`[Gemini API Warning] Model '${modelName}' failed: ${errMsg}`);
 
-              if ((isQuota || isTransient) && retryCount < maxRetries) {
+              if (isTransient && !isQuota && retryCount < maxRetries) {
                 retryCount++;
                 const backoffTime = retryCount * 1000; // 1s, 2s backoff
-                console.log(`[Gemini API] Retrying '${modelName}' in ${backoffTime}ms due to transient load or speed limits...`);
+                console.log(`[Gemini API] Retrying '${modelName}' in ${backoffTime}ms due to transient error...`);
                 await sleep(backoffTime);
               } else {
-                break; // Try next model candidate
+                // For quota limit or max retries exceeded, break immediately to try the next model candidate
+                break;
               }
             }
           }

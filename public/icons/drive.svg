@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+      <defs>
+        <linearGradient id="g_green" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#00E676"/>
+          <stop offset="100%" stop-color="#00A843"/>
+        </linearGradient>
+        <linearGradient id="g_yellow" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#FFEB3B"/>
+          <stop offset="100%" stop-color="#FBC02D"/>
+        </linearGradient>
+        <linearGradient id="g_blue" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#2979FF"/>
+          <stop offset="100%" stop-color="#1565C0"/>
+        </linearGradient>
+      </defs>
+      <!-- Google Drive Triangle -->
+      <g transform="translate(256, 256) scale(1.1)">
+        <!-- Green Top Segment -->
+        <path d="M -70 -130 L 70 -130 Q 120 -130 95 -85 L 15 55 Q -10 100 -60 100 L -120 100 L -70 -130 Z" fill="url(#g_green)"/>
+        <!-- Yellow Right Segment -->
+        <path d="M 60 -90 L 150 65 Q 175 110 135 150 Q 95 180 40 180 L -100 180 L 10 0 Z" fill="url(#g_yellow)"/>
+        <!-- Blue Left Segment -->
+        <path d="M -130 -80 L -30 100 L -130 180 Q -175 180 -185 130 Q -195 80 -160 20 Z" fill="url(#g_blue)"/>
+      </g>
+    </svg>
