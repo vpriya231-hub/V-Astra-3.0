@@ -2,35 +2,73 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>V-Astra AI - Intelligent Workspace &amp; Automation Platform</title>
-    <meta name="description" content="V-Astra AI is an intelligent AI workspace and automation assistant designed to streamline workflows, connect cloud tools, and elevate productivity." />
-    <meta name="keywords" content="V-Astra AI, AI assistant, AI workspace, workflow automation, Google Drive integration, Gmail AI, Notion AI, task automation" />
-    <link rel="canonical" href="https://v-astra.ai.studio/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+    <title>V Astra AI - Intelligent Workspace &amp; Generative Ecosystem</title>
+    <meta name="description" content="Smart AI studio ecosystem providing cutting-edge generative tools, intelligent workflows, and developer utilities." />
+    <meta name="keywords" content="V Astra AI, AI workspace, AI studio, workflow automation, generative AI, developer utilities, productivity" />
+    <meta name="monetag" content="a1ac423f8acb94430a34bb0b9c5fb05b" />
     
-    <!-- Google & PWA Tags -->
-    <meta name="google-site-verification" content="c4vBNoyqu2_QXGI4Y8eYaOXyxwaDWUigcIOyea-QtPc" />
-    <meta name="theme-color" content="#ffffff" />
+    <!-- PWA & Microsoft Store Metadata -->
     <link rel="manifest" href="/manifest.json" />
-    <link rel="icon" type="image/x-icon" href="https://v-astra.ai.studio/favicon.ico" />
+    <meta name="theme-color" content="#6366f1" />
+    <meta name="background-color" content="#0b0f19" />
+    
+    <!-- Apple Mobile Web App Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="V Astra AI" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+
+    <!-- Microsoft / Windows Tile & PWA Tags -->
+    <meta name="application-name" content="V Astra AI" />
+    <meta name="msapplication-TileColor" content="#0b0f19" />
+    <meta name="msapplication-TileImage" content="/icon-512.png" />
+    <meta name="msapplication-config" content="none" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    
+    <!-- Standard & High-Res Favicons -->
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon.png" />
+    <link rel="shortcut icon" href="/favicon.png" />
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://v-astra.ai.studio/" />
-    <meta property="og:title" content="V-Astra AI - Intelligent Workspace &amp; Automation Platform" />
-    <meta property="og:description" content="Streamline your workflows with V-Astra AI. Connect Google Drive, Gmail, Notion, Docs, and automate complex tasks effortlessly." />
-    <meta property="og:image" content="https://v-astra.ai.studio/logo.svg" />
+    <meta property="og:title" content="V Astra AI - Intelligent Workspace &amp; Generative Ecosystem" />
+    <meta property="og:description" content="Smart AI studio ecosystem providing cutting-edge generative tools, intelligent workflows, and developer utilities." />
+    <meta property="og:image" content="/icon-512.png" />
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:url" content="https://v-astra.ai.studio/" />
-    <meta name="twitter:title" content="V-Astra AI - Intelligent Workspace &amp; Automation Platform" />
-    <meta name="twitter:description" content="Streamline your workflows with V-Astra AI. Connect Google Drive, Gmail, Notion, Docs, and automate complex tasks effortlessly." />
-    <meta name="twitter:image" content="https://v-astra.ai.studio/logo.svg" />
+    <meta name="twitter:title" content="V Astra AI - Intelligent Workspace &amp; Generative Ecosystem" />
+    <meta name="twitter:description" content="Smart AI studio ecosystem providing cutting-edge generative tools, intelligent workflows, and developer utilities." />
+    <meta name="twitter:image" content="/icon-512.png" />
+
+    <!-- Monetag Ad Scripts (Desktop only: In-Page Push & Vignette Banner) -->
+    <script>
+      (function() {
+        var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
+        
+        if (!isMobile) {
+          // 1. Existing In-Page Push Script
+          var pushScript = document.createElement('script');
+          pushScript.src = 'https://n6wxm.com/pfe/current/tag.min.js?z=11707028';
+          pushScript.dataset.zone = '11707028';
+          document.head.appendChild(pushScript);
+
+          // 2. New Vignette Banner Script
+          var vignetteScript = document.createElement('script');
+          vignetteScript.src = 'https://n6wxm.com/vignette.min.js';
+          vignetteScript.dataset.zone = '11707242';
+          document.head.appendChild(vignetteScript);
+        }
+      })();
+    </script>
   </head>
-  <body>
+  <body class="bg-[#0b0f19] text-zinc-100">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

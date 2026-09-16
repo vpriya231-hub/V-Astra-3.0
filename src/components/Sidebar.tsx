@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   Plus, MessageSquare, Edit2, Trash2, Check, X, Settings, 
   Sparkles, ChevronDown, Trash, RefreshCw, Sun, Moon, ExternalLink, Globe, Languages,
-  Search, Star, Flag, Zap
+  Search, Star, Flag, Zap, BookOpen
 } from "lucide-react";
 import { ChatHistoryItem } from "../types";
 import { t } from "../translations";
@@ -276,6 +276,32 @@ export default function Sidebar({
               </span>
             </div>
           </button>
+
+          {/* V Astra-NoteBook external application launcher */}
+          <a
+            href="https://v-notebook.lovable.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => {
+              onClose();
+            }}
+            className="w-full flex items-center justify-between p-3.5 rounded-2xl border border-emerald-500/60 dark:border-emerald-400/80 bg-emerald-500/10 hover:bg-emerald-500/15 shadow-[0_0_15px_rgba(16,185,129,0.25)] hover:shadow-[0_0_20px_rgba(16,185,129,0.45)] transition-all duration-300 cursor-pointer group text-left no-underline"
+            id="v-notebook-menu-option"
+            title="Open V Astra-NoteBook in new tab"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <BookOpen className="w-5 h-5 text-emerald-500 fill-emerald-500/20 shrink-0 group-hover:scale-110 transition-transform duration-200" />
+              <span className="text-sm font-sans font-semibold text-emerald-600 dark:text-emerald-400 truncate">
+                V Astra-NoteBook
+              </span>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <span className="text-[9px] font-sans font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-600 text-white uppercase shadow-sm flex items-center gap-1">
+                <span>RESEARCH</span>
+                <ExternalLink className="w-2.5 h-2.5 opacity-90" />
+              </span>
+            </div>
+          </a>
 
           {/* Design (beta) Option temporarily hidden */}
 

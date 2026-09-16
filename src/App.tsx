@@ -18,6 +18,7 @@ import {
   parseOAuthCallback,
   fetchUserInfo,
   getCustomClientIds,
+  getEffectiveClientId,
 } from "./lib/connectors";
 
 export default function App() {
@@ -284,22 +285,38 @@ export default function App() {
 
   // 2. Synchronize Storage
   useEffect(() => {
-    localStorage.setItem("v_astra_user_profile", JSON.stringify(profile));
+    try {
+      localStorage.setItem("v_astra_user_profile", JSON.stringify(profile));
+    } catch (err) {
+      console.warn("Storage sync failed for profile:", err);
+    }
   }, [profile]);
 
   useEffect(() => {
-    localStorage.setItem("v_astra_chats", JSON.stringify(chats));
+    try {
+      localStorage.setItem("v_astra_chats", JSON.stringify(chats));
+    } catch (err) {
+      console.warn("Storage sync failed for chats:", err);
+    }
   }, [chats]);
 
   useEffect(() => {
-    localStorage.setItem("v_astra_api_key", apiKey);
+    try {
+      localStorage.setItem("v_astra_api_key", apiKey);
+    } catch (err) {
+      console.warn("Storage sync failed for apiKey:", err);
+    }
   }, [apiKey]);
 
   useEffect(() => {
-    if (activeChatId) {
-      localStorage.setItem("v_astra_active_chat_id", activeChatId);
-    } else {
-      localStorage.removeItem("v_astra_active_chat_id");
+    try {
+      if (activeChatId) {
+        localStorage.setItem("v_astra_active_chat_id", activeChatId);
+      } else {
+        localStorage.removeItem("v_astra_active_chat_id");
+      }
+    } catch (err) {
+      console.warn("Storage sync failed for activeChatId:", err);
     }
   }, [activeChatId]);
 
@@ -475,51 +492,54 @@ export default function App() {
   };
 
   const handleSendMessage = async (content: string, image?: { mimeType: string; data: string }) => {
-    // Determine the current conversation context
-    let currentChatId = activeChatId;
-    let currentChats = [...chats];
+    // If no text is provided when an image is sent, supply a helpful default prompt
+    const promptContent = content.trim() || (image ? "Please analyze and describe this image in detail." : "");
+    if (!promptContent && !image) return;
 
-    // Auto-create a session if none is active
-    if (!currentChatId) {
-      currentChatId = `chat-${Date.now()}`;
-      const newChat: ChatHistoryItem = {
-        id: currentChatId,
-        title: content.slice(0, 24) + (content.length > 24 ? "..." : ""),
-        createdAt: new Date().toISOString(),
-        messages: [],
-      };
-      currentChats = [newChat, ...currentChats];
-      setChats(currentChats);
+    // Determine or generate chat ID
+    const currentChatId = activeChatId || `chat-${Date.now()}`;
+    const isNewSession = !activeChatId;
+
+    if (isNewSession) {
       setActiveChatId(currentChatId);
     }
-
-    const activeChat = currentChats.find((chat) => chat.id === currentChatId);
-    if (!activeChat) return;
 
     // Create user message
     const userMessage: Message = {
       id: `msg-${Date.now()}-user`,
       role: "user",
-      content,
+      content: promptContent,
       timestamp: new Date().toISOString(),
       ...(image ? { image } : {}),
     };
 
-    // Update history locally with user message
-    const updatedMessages = [...activeChat.messages, userMessage];
-    const isFirstUserMessage = activeChat.messages.length === 0;
-    
-    const updatedChatTitle = isFirstUserMessage
-      ? content.slice(0, 28) + (content.length > 28 ? "..." : "")
-      : activeChat.title;
+    let updatedMessagesForCall: Message[] = [userMessage];
 
-    setChats((prev) =>
-      prev.map((chat) =>
-        chat.id === currentChatId
-          ? { ...chat, title: updatedChatTitle, messages: updatedMessages }
-          : chat
-      )
-    );
+    // Atomically update chats state
+    setChats((prevChats) => {
+      const existingChat = prevChats.find((c) => c.id === currentChatId);
+      if (existingChat) {
+        const newMessages = [...existingChat.messages, userMessage];
+        updatedMessagesForCall = newMessages;
+        const isFirst = existingChat.messages.length === 0;
+        const newTitle = isFirst 
+          ? (content.trim() ? content.slice(0, 28) + (content.length > 28 ? "..." : "") : "Image Analysis")
+          : existingChat.title;
+
+        return prevChats.map((c) => 
+          c.id === currentChatId ? { ...c, title: newTitle, messages: newMessages } : c
+        );
+      } else {
+        const newChat: ChatHistoryItem = {
+          id: currentChatId,
+          title: content.trim() ? (content.slice(0, 24) + (content.length > 24 ? "..." : "")) : "Image Analysis",
+          createdAt: new Date().toISOString(),
+          messages: [userMessage],
+        };
+        updatedMessagesForCall = [userMessage];
+        return [newChat, ...prevChats];
+      }
+    });
 
     setIsLoading(true);
 
@@ -527,7 +547,7 @@ export default function App() {
       // Execute Intelligent Connector Intent layer before generating LLM response
       let connectorContext = "";
       try {
-        const fetchedContext = await processConnectorIntent(content, connectors);
+        const fetchedContext = await processConnectorIntent(promptContent, connectors);
         if (fetchedContext) {
           connectorContext = `\n\n[EXTERNAL CONNECTORS REAL-TIME CONTEXT & API RESULTS]:\n${fetchedContext}\n\nINSTRUCTION FOR V-ASTRA AI: You have active real-time data retrieved from connected external services above. Summarize, explain, or perform requested analysis accurately using this data.`;
         }
@@ -550,14 +570,31 @@ export default function App() {
       // Build proper system instructions incorporating user's configured name and connector context
       const systemInstruction = `You are V-Astra AI, a highly smart, sophisticated, and polished AI companion with an elegant minimalist designer theme. Address the user gracefully as ${profile.name}. Keep your responses beautifully styled, utilizing markdown where helpful. Speak eloquently, professionally, and directly without fluff. You have full permission to CREATE, INSERT, and EDIT content in the user's Notion, Google Calendar, Google Tasks, Google Forms, and SEND messages to Telegram when requested. NEVER state that you can only read/view or cannot modify data or send messages.${connectorContext}${connectorOverrideInstruction}`;
 
+      const googleConnectorsPayload = {
+        gmail: connectors.find((c) => c.id === "gmail"),
+        google_drive: connectors.find((c) => c.id === "google_drive"),
+        google_docs: connectors.find((c) => c.id === "google_docs"),
+        google_sheets: connectors.find((c) => c.id === "google_sheets"),
+        clientId: getEffectiveClientId("google"),
+      };
+
+      // BYOK Custom API Key resolution & trimming
+      const trimmedCustomKey = (apiKey || "").trim();
+      const hasCustomKey = trimmedCustomKey.length > 0;
+      console.log("Using API Key source:", hasCustomKey ? "BYOK" : "Default");
+
+      const chatHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (hasCustomKey) {
+        chatHeaders["x-gemini-key"] = trimmedCustomKey;
+      }
+
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-gemini-key": apiKey,
-        },
+        headers: chatHeaders,
         body: JSON.stringify({
-          messages: updatedMessages,
+          messages: updatedMessagesForCall,
           systemInstruction,
           webSearchEnabled,
           aiMode,
@@ -565,20 +602,57 @@ export default function App() {
           secondary_language: profile.secondary_language || "Malayalam (മലയാളം)",
           v_astra_language: profile.v_astra_language || "English (India)",
           userName: profile.name,
+          googleConnectors: googleConnectorsPayload,
         }),
       });
 
       if (!response.ok) {
         const text = await response.text().catch(() => "");
         let errorMessage = "Failed to retrieve generated response from the Astra proxy.";
+        let isCustomKeyError = false;
         if (text) {
           try {
             const errJson = JSON.parse(text);
             errorMessage = errJson.error || errorMessage;
+            if (errJson.isCustomKeyError || errJson.code === "INVALID_CUSTOM_API_KEY") {
+              isCustomKeyError = true;
+            }
           } catch {
             errorMessage = text || errorMessage;
           }
         }
+
+        // Custom API Key validation: handle 401/403 or invalid key without crashing the session
+        if (isCustomKeyError || ((response.status === 401 || response.status === 403) && hasCustomKey)) {
+          showGlobalToast("Invalid custom API Key. Please verify your Gemini key.");
+
+          const customKeyAssistantMessage: Message = {
+            id: `msg-${Date.now()}-assistant`,
+            role: "assistant",
+            content: "⚠️ **Invalid Custom API Key**\n\nYour custom Gemini API key was rejected (`401 / 403 Unauthorized`).\n\nPlease verify your Gemini key in **Settings → Bring Your Own Key (BYOK)**, or clear it to continue chatting with the default system key.",
+            timestamp: new Date().toISOString(),
+          };
+
+          setChats((prevChats) => {
+            const existingChat = prevChats.find((c) => c.id === currentChatId);
+            if (existingChat) {
+              return prevChats.map((c) =>
+                c.id === currentChatId ? { ...c, messages: [...c.messages, customKeyAssistantMessage] } : c
+              );
+            }
+            return [
+              {
+                id: currentChatId,
+                title: content.trim() ? (content.slice(0, 24) + (content.length > 24 ? "..." : "")) : "Chat",
+                createdAt: new Date().toISOString(),
+                messages: [userMessage, customKeyAssistantMessage],
+              },
+              ...prevChats,
+            ];
+          });
+          return;
+        }
+
         throw new Error(errorMessage);
       }
 
@@ -594,6 +668,25 @@ export default function App() {
         throw new Error("Unable to parse server response as JSON. Please ensure the server is operating correctly.");
       }
 
+      if (data.keySource) {
+        console.log("Using API Key source:", data.keySource);
+      }
+
+      // Update any refreshed access tokens returned by the server's OAuth refresh handler
+      if (data.refreshedTokens) {
+        let hasUpdated = false;
+        const updated = connectors.map((c) => {
+          if (data.refreshedTokens[c.id]) {
+            hasUpdated = true;
+            return { ...c, accessToken: data.refreshedTokens[c.id] };
+          }
+          return c;
+        });
+        if (hasUpdated) {
+          handleUpdateConnectors(updated);
+        }
+      }
+
       // Create assistant response message
       const assistantMessage: Message = {
         id: `msg-${Date.now()}-assistant`,
@@ -602,23 +695,33 @@ export default function App() {
         timestamp: new Date().toISOString(),
       };
 
-      setChats((prev) =>
-        prev.map((chat) =>
-          chat.id === currentChatId
-            ? { ...chat, messages: [...updatedMessages, assistantMessage] }
-            : chat
-        )
-      );
+      setChats((prevChats) => {
+        const existingChat = prevChats.find((c) => c.id === currentChatId);
+        if (existingChat) {
+          return prevChats.map((c) =>
+            c.id === currentChatId ? { ...c, messages: [...c.messages, assistantMessage] } : c
+          );
+        }
+        return [
+          {
+            id: currentChatId,
+            title: content.trim() ? (content.slice(0, 24) + (content.length > 24 ? "..." : "")) : "Image Analysis",
+            createdAt: new Date().toISOString(),
+            messages: [userMessage, assistantMessage],
+          },
+          ...prevChats,
+        ];
+      });
 
       // Trigger rating modal after a successful conversation turn if not yet rated/dismissed
       const currentRatingStatus = localStorage.getItem("v_astra_rating_status");
-      if (!currentRatingStatus && (updatedMessages.length + 1 >= 4)) {
+      if (!currentRatingStatus && (updatedMessagesForCall.length + 1 >= 4)) {
         setTimeout(() => {
           setRatingModalOpen(true);
         }, 1200);
       }
     } catch (err: any) {
-      console.error(err);
+      console.error("Chat error:", err);
       
       const errorMessage: Message = {
         id: `msg-${Date.now()}-assistant`,
@@ -627,10 +730,10 @@ export default function App() {
         timestamp: new Date().toISOString(),
       };
 
-      setChats((prev) =>
-        prev.map((chat) =>
+      setChats((prevChats) =>
+        prevChats.map((chat) =>
           chat.id === currentChatId
-            ? { ...chat, messages: [...updatedMessages, errorMessage] }
+            ? { ...chat, messages: [...chat.messages, errorMessage] }
             : chat
         )
       );
@@ -732,12 +835,14 @@ export default function App() {
             onVoiceChange={handleVoiceChange}
             apiKey={apiKey}
             onApiKeyChange={(key) => {
-              setApiKey(key);
-              if (key) {
-                localStorage.setItem("v_astra_api_key", key);
+              const trimmed = (key || "").trim();
+              setApiKey(trimmed);
+              if (trimmed) {
+                localStorage.setItem("v_astra_api_key", trimmed);
               } else {
                 localStorage.removeItem("v_astra_api_key");
               }
+              console.log("Using API Key source:", trimmed ? "BYOK" : "Default");
             }}
             connectors={connectors}
             onUpdateConnectors={handleUpdateConnectors}

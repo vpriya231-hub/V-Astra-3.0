@@ -4,7 +4,7 @@ import Markdown from "react-markdown";
 import { 
   Menu, Send, Sparkles, User, AlertCircle, HelpCircle, 
   ArrowUpRight, Bot, Compass, MessageSquare, CornerDownLeft,
-  ChevronDown, Plus, Mic, X, Image, Camera, Upload,
+  ChevronDown, Plus, Mic, X, Image as ImageIcon, Camera, Upload,
   Share2, Download, Copy, FileText, Check, Loader2,
   ThumbsUp, ThumbsDown, Volume2, VolumeX
 } from "lucide-react";
@@ -13,6 +13,7 @@ import { t } from "../translations";
 import { printChatDocument, copyChatToClipboard, isAndroidWebView } from "../utils/shareUtils";
 import { AiResponseLoader } from "./AiResponseLoader";
 import { FeedbackModal } from "./FeedbackModal";
+import { findMatchingVoice, getStoredVoiceSettings, LANGUAGE_CODES as TTS_LANGUAGE_CODES } from "../utils/tts";
 
 interface ChatAreaProps {
   messages: Message[];
@@ -353,12 +354,58 @@ export default function ChatArea({
 
     const reader = new FileReader();
     reader.onload = () => {
-      const dataUrl = reader.result as string;
-      setUploadedImage({
-        mimeType: file.type,
-        data: dataUrl,
-        name: file.name,
-      });
+      const rawDataUrl = reader.result as string;
+      
+      // Optimize & scale high-resolution images smoothly using canvas
+      const img = new Image();
+      img.onload = () => {
+        const MAX_DIMENSION = 1600;
+        let { width, height } = img;
+        
+        if (width > MAX_DIMENSION || height > MAX_DIMENSION || rawDataUrl.length > 1 * 1024 * 1024) {
+          if (width > height) {
+            if (width > MAX_DIMENSION) {
+              height = Math.round((height * MAX_DIMENSION) / width);
+              width = MAX_DIMENSION;
+            }
+          } else {
+            if (height > MAX_DIMENSION) {
+              width = Math.round((width * MAX_DIMENSION) / height);
+              height = MAX_DIMENSION;
+            }
+          }
+          
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const targetMime = file.type === "image/png" ? "image/png" : "image/jpeg";
+            const optimizedDataUrl = canvas.toDataURL(targetMime, 0.85);
+            setUploadedImage({
+              mimeType: targetMime,
+              data: optimizedDataUrl,
+              name: file.name,
+            });
+            return;
+          }
+        }
+        
+        setUploadedImage({
+          mimeType: file.type,
+          data: rawDataUrl,
+          name: file.name,
+        });
+      };
+      img.onerror = () => {
+        setUploadedImage({
+          mimeType: file.type,
+          data: rawDataUrl,
+          name: file.name,
+        });
+      };
+      img.src = rawDataUrl;
     };
     reader.readAsDataURL(file);
   };
@@ -472,11 +519,12 @@ export default function ChatArea({
 
     if (!cleanText) return;
 
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
+
     const utterance = new SpeechSynthesisUtterance(cleanText);
     currentUtteranceRef.current = utterance;
-    
-    const targetCode = LANGUAGE_CODES[languageName]?.synthesis || "en-IN";
-    utterance.lang = targetCode;
     
     stopSpeechRecognition();
 
@@ -510,20 +558,27 @@ export default function ChatArea({
       }
     };
 
-    const voices = window.speechSynthesis.getVoices();
-    let matchingVoice: SpeechSynthesisVoice | undefined;
+    // Find the exact matching voice object from available/cached voices
+    const matchingVoice = findMatchingVoice(
+      window.speechSynthesis.getVoices(),
+      selectedVoiceURI || "default",
+      languageName
+    );
+    const voiceSettings = getStoredVoiceSettings();
 
-    if (selectedVoiceURI && selectedVoiceURI !== "default") {
-      matchingVoice = voices.find(v => v.voiceURI === selectedVoiceURI || v.name === selectedVoiceURI);
-    }
-
-    if (!matchingVoice) {
-      matchingVoice = voices.find(v => v.lang.toLowerCase().replace("_", "-") === targetCode.toLowerCase() || v.lang.startsWith(targetCode.slice(0, 2)));
-    }
-
+    // Explicitly assign both utterance.voice and utterance.lang before speaking
     if (matchingVoice) {
       utterance.voice = matchingVoice;
+      utterance.lang = matchingVoice.lang;
+    } else {
+      const targetCode = TTS_LANGUAGE_CODES[languageName]?.synthesis || LANGUAGE_CODES[languageName]?.synthesis || "en-IN";
+      utterance.lang = targetCode;
     }
+
+    // Apply pitch, rate, and volume
+    utterance.pitch = voiceSettings.pitch;
+    utterance.rate = voiceSettings.rate;
+    utterance.volume = voiceSettings.volume;
     
     window.speechSynthesis.speak(utterance);
   };
@@ -544,7 +599,7 @@ export default function ChatArea({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && !uploadedImage) || isLoading) return;
     onSendMessage(input.trim(), uploadedImage ? { mimeType: uploadedImage.mimeType, data: uploadedImage.data } : undefined);
     setInput("");
     handleRemoveImage();
@@ -836,12 +891,15 @@ export default function ChatArea({
                       id={`bubble-${message.id}`}
                     >
                       {message.image && message.image.data && (
-                        <div className="mb-2 max-w-xs overflow-hidden rounded-xl border border-slate-200/50 dark:border-slate-800">
+                        <div className="mb-2 max-w-xs overflow-hidden rounded-xl border border-slate-200/50 dark:border-slate-800 bg-slate-100 dark:bg-slate-850">
                           <img 
                             src={message.image.data} 
                             alt="Attached file" 
-                            className="w-full h-auto object-cover max-h-48"
+                            className="w-full h-auto object-cover max-h-48 rounded-xl block"
                             referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = "none";
+                            }}
                           />
                         </div>
                       )}

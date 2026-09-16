@@ -333,7 +333,7 @@ export function getEffectiveClientId(provider: "google" | "github" | "notion"): 
   const custom = getCustomClientIds();
   const env = (import.meta as unknown as { env: Record<string, string> }).env || {};
   if (provider === "google") {
-    return custom.googleClientId?.trim() || env.VITE_GOOGLE_CLIENT_ID || "";
+    return custom.googleClientId?.trim() || env.VITE_GOOGLE_CLIENT_ID || "101317789836-gnhrtmrq0p09u9rdk8sqqet25595ptvt.apps.googleusercontent.com";
   } else if (provider === "github") {
     return custom.githubClientId?.trim() || env.VITE_GITHUB_CLIENT_ID || "";
   } else {

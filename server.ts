@@ -1,9 +1,14 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import dotenv from "dotenv";
 import fs from "fs";
+import {
+  googleWorkspaceToolDeclarations,
+  executeGoogleWorkspaceTool,
+  GoogleConnectorsPayload,
+} from "./src/lib/googleWorkspaceTools.js";
 
 dotenv.config();
 
@@ -11,8 +16,9 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Parse JSON payloads
-  app.use(express.json());
+  // Parse JSON payloads with generous limit for image uploads and multimodal payloads (up to 50MB)
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
   // API: Health check
   app.get("/api/health", (req, res) => {
@@ -419,7 +425,7 @@ async function startServer() {
       }
 
       const authHeader = req.headers.authorization;
-      const apiKey = process.env.YOUTUBE_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+      const apiKey = process.env.YOUTUBE_API_KEY || process.env.GEMINI_API_KEY1 || process.env.GOOGLE_API_KEY;
 
       let ytUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${encodeURIComponent(videoId)}`;
       if (apiKey) {
@@ -456,7 +462,7 @@ async function startServer() {
       }
 
       const authHeader = req.headers.authorization;
-      const apiKey = process.env.YOUTUBE_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+      const apiKey = process.env.YOUTUBE_API_KEY || process.env.GEMINI_API_KEY1 || process.env.GOOGLE_API_KEY;
 
       let ytUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(query)}&maxResults=5`;
       if (apiKey) {
@@ -570,21 +576,36 @@ async function startServer() {
   // API: Chat proxy using @google/genai
   app.post("/api/chat", async (req, res) => {
     try {
-      const { messages, systemInstruction, webSearchEnabled, primary_language, secondary_language, userName, aiMode } = req.body;
+      const {
+        messages,
+        systemInstruction,
+        webSearchEnabled,
+        primary_language,
+        secondary_language,
+        userName,
+        aiMode,
+        googleConnectors,
+      } = req.body;
       if (!messages || !Array.isArray(messages)) {
         res.status(400).json({ error: "Invalid request. 'messages' array is required." });
         return;
       }
 
-      // 1. Get the API Key from header or fallback to GEMINI_API_KEY1 env variable
-      const clientApiKey = req.headers["x-gemini-key"] || req.headers["x-custom-api-key"] || req.headers["x-api-key"];
-      const apiKey = (typeof clientApiKey === "string" && clientApiKey.trim()) 
-        ? clientApiKey.trim() 
-        : (process.env.GEMINI_API_KEY1 || process.env.GEMINI_API_KEY);
+      // 1. Get the API Key from header or fallback to GEMINI_API_KEY1 env variable (BYOK logic)
+      const clientApiKeyRaw = req.headers["x-gemini-key"] || req.headers["x-custom-api-key"] || req.headers["x-api-key"];
+      const trimmedClientKey = (typeof clientApiKeyRaw === "string") ? clientApiKeyRaw.trim() : "";
+      const isCustomKey = trimmedClientKey.length > 0;
+      const apiKey = isCustomKey 
+        ? trimmedClientKey 
+        : process.env.GEMINI_API_KEY1;
+
+      const keySource = isCustomKey ? "BYOK" : "Default";
+      console.log(`[API Key Route] Using API Key source: ${keySource}`);
 
       if (!apiKey) {
         res.status(400).json({ 
-          error: "API key is missing. Please enter your Gemini API key in the V-Astra AI settings box (found in the Settings page or sidebar) to start chatting." 
+          error: "API key is missing. Please enter your Gemini API key in the V-Astra AI settings box (found in the Settings page or sidebar) to start chatting.",
+          keySource: "None",
         });
         return;
       }
@@ -601,7 +622,7 @@ async function startServer() {
 
       // 3. Format messages to the @google/genai contents format
       // GenAI format uses roles: "user" and "model". Supports multimodal image attachments.
-      const contents = messages.map((msg: { role: string; content: string; image?: { mimeType: string; data: string } }) => {
+      const contents: any[] = messages.map((msg: { role: string; content: string; image?: { mimeType: string; data: string } }) => {
         const role = msg.role === "assistant" ? "model" : "user";
         const parts: any[] = [{ text: msg.content || "" }];
 
@@ -647,18 +668,19 @@ async function startServer() {
       // 4. Generate content based on selected mode
       const selectedMode = aiMode || "standard";
       let modeDirective = "";
-      let modelCandidates = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash"];
+      // Order models prioritizing ultra-low latency & intelligence
+      let modelCandidates = ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.7-flash"];
 
       if (selectedMode === "thinking") {
         modeDirective = `\n\n[Mode: Thinking Activated]\n- You are operating in Advanced Reasoning, Coding, and Mathematical Thinking mode.\n- Focus on depth, extreme precision, and bulletproof logic. Write clear, detailed, and structured steps.\n- CRITICAL: You must explicitly walk through your reasoning step-by-step under a "### 💭 Analysis & Thought Process" header first, before presenting your clean, optimal final code/math answer.`;
-        modelCandidates = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash"];
+        modelCandidates = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"];
       } else if (selectedMode === "medium") {
         modeDirective = `\n\n[Mode: Medium Activated]\n- You are operating in Balanced All-Rounder Help mode.\n- Deliver beautifully detailed, well-rounded, and comprehensive explanations.\n- Frame complex topics elegantly and cover necessary sub-elements with high contextual nuance.`;
-        modelCandidates = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash"];
+        modelCandidates = ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-3.7-flash", "gemini-flash-latest"];
       } else {
         // "standard"
         modeDirective = `\n\n[Mode: Standard Activated]\n- You are operating in Standard Companion mode (fast, direct, and conversational).\n- Focus on response speed, directness, and highly refined summaries.\n- Deliver the answers eloquently and directly, without unnecessary preamble.`;
-        modelCandidates = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash"];
+        modelCandidates = ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.7-flash"];
       }
 
       // Short, concise response behavior directive by default
@@ -666,35 +688,81 @@ async function startServer() {
 
       const languageDirectives = `\n\n[Voice/STT Engine & Multilingual Configuration]\n- Primary/Selected Language: ${primary}\n- Secondary Language: ${secondary}\n- SMART LANGUAGE DETECTION: Even if default/selected language is set, if the user starts speaking or typing in Malayalam, Spanish, French, Hindi, or any other language, you MUST automatically detect it, process the query under that language's context, and reply seamlessly in that SAME language. Deliver highly fluent responses in the script and accent corresponding to the detected language.`;
 
+      // Google Workspace Status & Directives
+      const gmailStatus = !!(googleConnectors?.gmail?.connected && googleConnectors?.gmail?.active !== false && googleConnectors?.gmail?.accessToken);
+      const driveStatus = !!(googleConnectors?.google_drive?.connected && googleConnectors?.google_drive?.active !== false && googleConnectors?.google_drive?.accessToken);
+      const docsStatus = !!(googleConnectors?.google_docs?.connected && googleConnectors?.google_docs?.active !== false && googleConnectors?.google_docs?.accessToken);
+      const sheetsStatus = !!(googleConnectors?.google_sheets?.connected && googleConnectors?.google_sheets?.active !== false && googleConnectors?.google_sheets?.accessToken);
+
+      const workspaceDirective = `\n\n[GOOGLE WORKSPACE LIVE TOOLS & DISPATCHER DIRECTIVE]
+You are equipped with LIVE Function Calling tools for Google Workspace:
+• list_unread_emails({ maxResults }): Fetches unread or recent messages from the user's connected Gmail inbox.
+• search_emails({ query, maxResults }): Searches the user's Gmail messages using query keywords, sender, or subject.
+• list_drive_files({ query, pageSize }): Lists or searches files and documents in Google Drive.
+• read_doc_content({ fileId }): Fetches full text content of a Google Doc using its file ID or title.
+• read_sheet_data({ fileId, range }): Fetches cell values and rows from a Google Sheet.
+
+Active Service Status:
+- Gmail: ${gmailStatus ? "CONNECTED & ACTIVE" : "NOT CONNECTED"}
+- Google Drive: ${driveStatus ? "CONNECTED & ACTIVE" : "NOT CONNECTED"}
+- Google Docs: ${docsStatus ? "CONNECTED & ACTIVE" : "NOT CONNECTED"}
+- Google Sheets: ${sheetsStatus ? "CONNECTED & ACTIVE" : "NOT CONNECTED"}
+
+CRITICAL RULES:
+1. Whenever the user asks to check their emails, look up files on Google Drive, read a doc, or check spreadsheet rows, YOU MUST CALL the corresponding tool.
+2. NEVER say "I don't have access to your personal files or Gmail". You have live tool integration.
+3. If a service is NOT CONNECTED when the user requests it (or if a tool returns a NOT_CONNECTED status), answer gracefully: "Please connect your [Service Name] in Settings -> Connectors to allow me to access this."`;
+
       const config: any = {
-        systemInstruction: (systemInstruction || "You are V-Astra AI, a highly smart, sophisticated, and polished AI companion. Keep answers clear, eloquent, and helpful.") + modeDirective + conciseDirective + languageDirectives,
+        systemInstruction: (systemInstruction || "You are V-Astra AI, a highly smart, sophisticated, and polished AI companion. Keep answers clear, eloquent, and helpful.") + modeDirective + conciseDirective + languageDirectives + workspaceDirective,
       };
 
-      // Conditionally enable Google Search grounding tool if webSearchEnabled is true
+      // Set low thinking latency for non-thinking modes to eliminate latency overhead
+      if (selectedMode !== "thinking") {
+        config.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
+      }
+
+      // Configure tools: Google Workspace functions + optional Google Search grounding
+      const toolsConfig: any[] = [];
       if (webSearchEnabled === true) {
-        config.tools = [{ googleSearch: {} }];
+        toolsConfig.push({ googleSearch: {} });
+      }
+      toolsConfig.push({ functionDeclarations: googleWorkspaceToolDeclarations });
+      config.tools = toolsConfig;
+
+      if (webSearchEnabled === true) {
+        config.toolConfig = { includeServerSideToolInvocations: true };
       }
 
       let response = null;
       let lastError: any = null;
+      const refreshedTokens: Record<string, string> = {};
 
-      // Helper for sleep/backoff
-      const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-      // Robust check for error types (rate limits, quotas, transient service faults)
+      // Robust check for error types (rate limits, quotas, transient service faults, and BYOK auth errors)
       function classifyError(err: any) {
-        if (!err) return { isQuota: false, isTransient: false };
+        if (!err) return { isQuota: false, isTransient: false, isAuth: false };
+        const status = err.status || err.statusCode || err.response?.status;
         const errStr = (
           (err.message || "") + " " + 
-          (err.status || "") + " " + 
+          (status || "") + " " + 
           (err.code || "") + " " + 
           (typeof err === "object" ? JSON.stringify(err) : String(err))
         ).toLowerCase();
 
+        const isAuth = status === 401 || 
+                       status === 403 || 
+                       errStr.includes("api_key_invalid") || 
+                       errStr.includes("api key not valid") || 
+                       errStr.includes("api_key_expired") ||
+                       (errStr.includes("invalid_argument") && errStr.includes("api key")) ||
+                       errStr.includes("consumer_invalid") ||
+                       errStr.includes("unauthenticated") ||
+                       errStr.includes("permission_denied") ||
+                       errStr.includes("permissiondenied");
+
         const isQuota = errStr.includes("429") || 
                         errStr.includes("quota") || 
                         errStr.includes("exhausted") || 
-                        errStr.includes("limit") || 
                         errStr.includes("resource_exhausted") ||
                         errStr.includes("rate");
 
@@ -703,60 +771,165 @@ async function startServer() {
                             errStr.includes("temporary") || 
                             errStr.includes("unavailable") || 
                             errStr.includes("overloaded") ||
+                            errStr.includes("high demand") ||
                             errStr.includes("busy") ||
                             errStr.includes("connect");
 
-        return { isQuota, isTransient };
+        return { isQuota, isTransient, isAuth };
       }
 
-      // Attempt generation with active config (potentially with grounding search)
+      // Attempt generation across model candidates with automated tool execution loop
       async function attemptGeneration(currentConfig: any) {
         for (const modelName of modelCandidates) {
-          let retryCount = 0;
-          const maxRetries = 2;
-          
-          while (retryCount <= maxRetries) {
-            try {
-              console.log(`[Gemini API] Attempting generation. Model: '${modelName}' (Attempt ${retryCount + 1}/${maxRetries + 1})`);
+          try {
+            console.log(`[Gemini API] Generating with Model: '${modelName}' (Source: ${keySource})`);
+            let currentContents = [...contents];
+            let loopCount = 0;
+            const maxLoops = 5;
+
+            while (loopCount < maxLoops) {
+              loopCount++;
               const resObj = await ai.models.generateContent({
                 model: modelName,
-                contents,
+                contents: currentContents,
                 config: currentConfig,
               });
-              if (resObj && resObj.text) {
-                return resObj;
-              }
-            } catch (err: any) {
-              lastError = err;
-              const { isQuota, isTransient } = classifyError(err);
-              const errMsg = err?.message || String(err);
 
-              console.warn(`[Gemini API Warning] Model '${modelName}' failed: ${errMsg}`);
-
-              if (isTransient && !isQuota && retryCount < maxRetries) {
-                retryCount++;
-                const backoffTime = retryCount * 1000; // 1s, 2s backoff
-                console.log(`[Gemini API] Retrying '${modelName}' in ${backoffTime}ms due to transient error...`);
-                await sleep(backoffTime);
-              } else {
-                // For quota limit or max retries exceeded, break immediately to try the next model candidate
+              const functionCalls = resObj.functionCalls;
+              // If model did not request any function calls, check if text was returned
+              if (!functionCalls || functionCalls.length === 0) {
+                if (resObj && resObj.text) {
+                  return resObj;
+                }
                 break;
               }
+
+              console.log(`[Gemini Tool Execution Loop ${loopCount}] Tool calls requested:`, functionCalls.map((c: any) => c.name));
+
+              // 1. Preserve model turn in contents
+              const candidateContent = resObj.candidates?.[0]?.content;
+              if (candidateContent) {
+                currentContents.push(candidateContent);
+              } else {
+                currentContents.push({
+                  role: "model",
+                  parts: functionCalls.map((fc: any) => ({ functionCall: fc })),
+                });
+              }
+
+              // 2. Execute each tool call against Google Workspace endpoints
+              const responseParts: any[] = [];
+              for (const call of functionCalls) {
+                const { result, newAccessToken } = await executeGoogleWorkspaceTool(
+                  call.name,
+                  call.args,
+                  googleConnectors
+                );
+
+                if (newAccessToken) {
+                  refreshedTokens[newAccessToken.service] = newAccessToken.token;
+                  if (googleConnectors && (googleConnectors as any)[newAccessToken.service]) {
+                    (googleConnectors as any)[newAccessToken.service].accessToken = newAccessToken.token;
+                  }
+                }
+
+                const respItem: any = {
+                  name: call.name,
+                  response: result,
+                };
+                if (call.id) {
+                  respItem.id = call.id;
+                }
+                responseParts.push({ functionResponse: respItem });
+              }
+
+              // 3. Append tool results as user turn to provide context back to the model
+              currentContents.push({
+                role: "user",
+                parts: responseParts,
+              });
+
+              // Loop continues: next iteration sends contents with tool results to Gemini!
             }
+          } catch (err: any) {
+            lastError = err;
+            const errMsg = err?.message || String(err);
+            console.warn(`[Gemini API Warning] Model '${modelName}' failed: ${errMsg}.`);
+            const { isAuth } = classifyError(err);
+            if (isCustomKey && isAuth) {
+              console.error(`[Gemini API Auth Failure] Custom BYOK key failed authentication. Stopping model fallback.`);
+              break;
+            }
+            continue;
           }
         }
         return null;
       }
 
-      // First run: attempt with requested config (including Google Search if enabled)
+      // Check if custom key failed authentication upfront
+      const initialAuthCheck = classifyError(lastError);
+      if (isCustomKey && initialAuthCheck.isAuth) {
+        res.status(401).json({
+          error: "Invalid custom API Key. Please verify your Gemini key.",
+          code: "INVALID_CUSTOM_API_KEY",
+          isCustomKeyError: true,
+          keySource: "BYOK",
+        });
+        return;
+      }
+
+      // First run: attempt with requested config (including Google Workspace tools and Web Search)
       response = await attemptGeneration(config);
 
-      // Second run: If it failed and webSearchEnabled was true, auto fallback to standard text generation (no search tools)
+      // If custom key had an auth error during first run, return immediately
+      if (!response && isCustomKey && classifyError(lastError).isAuth) {
+        res.status(401).json({
+          error: "Invalid custom API Key. Please verify your Gemini key.",
+          code: "INVALID_CUSTOM_API_KEY",
+          isCustomKeyError: true,
+          keySource: "BYOK",
+        });
+        return;
+      }
+
+      // Second run: If failed and webSearch was enabled, try with Google Workspace tools without Web Search
       if (!response && webSearchEnabled === true) {
-        console.warn("[Gemini API Fallback] Generation failed with web search enabled. Attempting fallback generation without Web Search grounding...");
+        console.warn("[Gemini API Fallback] Generation failed with web search enabled. Retrying with Google Workspace tools only...");
         const fallbackConfig = { ...config };
-        delete fallbackConfig.tools; // Strip googleSearch tools
+        fallbackConfig.tools = [{ functionDeclarations: googleWorkspaceToolDeclarations }];
+        delete fallbackConfig.toolConfig;
         response = await attemptGeneration(fallbackConfig);
+      }
+
+      // If custom key had an auth error, return immediately
+      if (!response && isCustomKey && classifyError(lastError).isAuth) {
+        res.status(401).json({
+          error: "Invalid custom API Key. Please verify your Gemini key.",
+          code: "INVALID_CUSTOM_API_KEY",
+          isCustomKeyError: true,
+          keySource: "BYOK",
+        });
+        return;
+      }
+
+      // Third run: Standard generation without tools if tools configuration had unexpected error
+      if (!response) {
+        console.warn("[Gemini API Fallback] Generation failed with tools. Retrying standard generation...");
+        const standardConfig = { ...config };
+        delete standardConfig.tools;
+        delete standardConfig.toolConfig;
+        response = await attemptGeneration(standardConfig);
+      }
+
+      // Check if custom key failed authentication after third run
+      if (!response && isCustomKey && classifyError(lastError).isAuth) {
+        res.status(401).json({
+          error: "Invalid custom API Key. Please verify your Gemini key.",
+          code: "INVALID_CUSTOM_API_KEY",
+          isCustomKeyError: true,
+          keySource: "BYOK",
+        });
+        return;
       }
 
       let responseText = "";
@@ -788,13 +961,31 @@ Please try resending your message in a few moments. Our connection should restor
         }
       }
 
-      res.json({ text: responseText });
+      res.json({
+        text: responseText,
+        keySource: isCustomKey ? "BYOK" : "Default",
+        refreshedTokens: Object.keys(refreshedTokens).length > 0 ? refreshedTokens : undefined,
+      });
     } catch (error: any) {
       console.error("Gemini API Error:", error);
       res.status(500).json({ 
         error: error?.message || "An unexpected error occurred while communicating with the Gemini model." 
       });
     }
+  });
+
+  // API Error handler middleware
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err) {
+      console.error("API Middleware Error:", err);
+      if (err.type === "entity.too.large" || err.status === 413) {
+        res.status(413).json({ error: "Uploaded payload is too large. Please select a smaller image or file." });
+        return;
+      }
+      res.status(err.status || 500).json({ error: err.message || "An unexpected server error occurred." });
+      return;
+    }
+    next();
   });
 
   // Vite middleware for development

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion } from "motion/react";
 import {
   ArrowLeft,
@@ -25,12 +25,23 @@ import {
   Key,
   Eye,
   EyeOff,
-  Save
+  Save,
+  Sliders,
+  RotateCcw
 } from "lucide-react";
 import { t } from "../translations";
 import { PRIMARY_LANGUAGES, SECONDARY_LANGUAGES, V_ASTRA_LANGUAGES } from "../constants/languages";
 import { ConnectorConfig } from "../types";
 import ConnectorsSection from "./ConnectorsSection";
+import MemorySection from "./MemorySection";
+import {
+  initVoiceLoading,
+  findMatchingVoice,
+  getSamplePhrase,
+  getStoredVoiceSettings,
+  saveStoredVoiceSettings,
+  LANGUAGE_CODES
+} from "../utils/tts";
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -87,6 +98,10 @@ export default function SettingsPage({
 }: SettingsPageProps) {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [isTestingVoice, setIsTestingVoice] = useState(false);
+  const [voicePitch, setVoicePitch] = useState<number>(() => getStoredVoiceSettings().pitch);
+  const [voiceRate, setVoiceRate] = useState<number>(() => getStoredVoiceSettings().rate);
+  const testUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
   const [showResetConfirmModal, setShowResetConfirmModal] = useState(false);
   const [showClearHistoryModal, setShowClearHistoryModal] = useState(false);
 
@@ -99,8 +114,10 @@ export default function SettingsPage({
   }, [apiKey]);
 
   const handleSaveApiKey = () => {
+    const trimmed = tempApiKey.trim();
     if (onApiKeyChange) {
-      onApiKeyChange(tempApiKey.trim());
+      onApiKeyChange(trimmed);
+      console.log("Using API Key source:", trimmed ? "BYOK" : "Default");
       setApiKeySavedSuccess(true);
       setTimeout(() => setApiKeySavedSuccess(false), 3000);
     }
@@ -110,58 +127,147 @@ export default function SettingsPage({
     setTempApiKey("");
     if (onApiKeyChange) {
       onApiKeyChange("");
+      console.log("Using API Key source: Default");
       setApiKeySavedSuccess(true);
       setTimeout(() => setApiKeySavedSuccess(false), 3000);
     }
   };
 
+  // 1. Reliable Voice Loading with caching and onvoiceschanged listener
   useEffect(() => {
-    const loadVoices = () => {
-      if (typeof window !== "undefined" && window.speechSynthesis) {
-        const availableVoices = window.speechSynthesis.getVoices();
-        setVoices(availableVoices);
-      }
-    };
-
-    loadVoices();
-
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.onvoiceschanged = loadVoices;
-    }
+    const unsubscribe = initVoiceLoading((loadedVoices) => {
+      setVoices(loadedVoices);
+    });
 
     return () => {
+      unsubscribe();
       if (typeof window !== "undefined" && window.speechSynthesis) {
-        window.speechSynthesis.onvoiceschanged = null;
+        window.speechSynthesis.cancel();
       }
     };
   }, []);
 
+  // Voice setting handlers
+  const handlePitchChange = (val: number) => {
+    setVoicePitch(val);
+    saveStoredVoiceSettings({ pitch: val });
+  };
+
+  const handleRateChange = (val: number) => {
+    setVoiceRate(val);
+    saveStoredVoiceSettings({ rate: val });
+  };
+
+  const handleResetVoiceSettings = () => {
+    setVoicePitch(1.0);
+    setVoiceRate(1.0);
+    saveStoredVoiceSettings({ pitch: 1.0, rate: 1.0 });
+    if (showToast) {
+      showToast("Voice pitch & rate reset to default (1.0x)");
+    }
+  };
+
+  const handleVoiceSelectChange = (newVoiceURI: string) => {
+    onVoiceChange(newVoiceURI);
+    saveStoredVoiceSettings({ voiceURI: newVoiceURI });
+  };
+
+  // 2. Voice & Language Binding + 3. Test Voice Button
   const handleTestVoice = () => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
 
+    // Make sure clicking "Test Voice" cancels any ongoing speech first
+    window.speechSynthesis.cancel();
+    testUtteranceRef.current = null;
+
     if (isTestingVoice) {
-      window.speechSynthesis.cancel();
       setIsTestingVoice(false);
       return;
     }
 
-    window.speechSynthesis.cancel();
-    const testPhrase = "Hello! I am V-Astra AI. This is a preview of your selected AI response voice.";
-    const utterance = new SpeechSynthesisUtterance(testPhrase);
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
+
+    // Find the exact matching voice object from speechSynthesis.getVoices()
+    const selectedVoiceObject = findMatchingVoice(voices, selectedVoiceURI, vAstraLanguage);
+
+    // Speak a sample sentence corresponding to the selected language
+    const sampleText = getSamplePhrase(vAstraLanguage, selectedVoiceObject);
+    const utterance = new SpeechSynthesisUtterance(sampleText);
+    testUtteranceRef.current = utterance;
+
+    // Explicitly assign both utterance.voice and utterance.lang before speaking
+    if (selectedVoiceObject) {
+      utterance.voice = selectedVoiceObject;
+      utterance.lang = selectedVoiceObject.lang;
+    } else {
+      const targetCode = LANGUAGE_CODES[vAstraLanguage]?.synthesis || "en-US";
+      utterance.lang = targetCode;
+    }
+
+    // Ensure pitch, rate, and volume settings are applied to utterance
+    utterance.pitch = voicePitch;
+    utterance.rate = voiceRate;
 
     utterance.onstart = () => setIsTestingVoice(true);
-    utterance.onend = () => setIsTestingVoice(false);
-    utterance.onerror = () => setIsTestingVoice(false);
-
-    if (selectedVoiceURI && selectedVoiceURI !== "default") {
-      const selected = voices.find((v) => v.voiceURI === selectedVoiceURI || v.name === selectedVoiceURI);
-      if (selected) {
-        utterance.voice = selected;
-      }
-    }
+    utterance.onend = () => {
+      setIsTestingVoice(false);
+      testUtteranceRef.current = null;
+    };
+    utterance.onerror = (e) => {
+      console.warn("Speech synthesis test preview error:", e);
+      setIsTestingVoice(false);
+      testUtteranceRef.current = null;
+    };
 
     window.speechSynthesis.speak(utterance);
   };
+
+  const getVoiceGenderTag = (name: string): string => {
+    const lowerName = name.toLowerCase();
+    if (
+      lowerName.includes("female") ||
+      lowerName.includes("zira") ||
+      lowerName.includes("samantha") ||
+      lowerName.includes("victoria") ||
+      lowerName.includes("karen") ||
+      lowerName.includes("fiona") ||
+      lowerName.includes("kyoko") ||
+      lowerName.includes("veena") ||
+      lowerName.includes("siri")
+    ) {
+      return " ♀ (Female)";
+    }
+    if (
+      lowerName.includes("male") ||
+      lowerName.includes("david") ||
+      lowerName.includes("alex") ||
+      lowerName.includes("daniel") ||
+      lowerName.includes("fred") ||
+      lowerName.includes("george") ||
+      lowerName.includes("rishi")
+    ) {
+      return " ♂ (Male)";
+    }
+    return "";
+  };
+
+  const targetLangCode = (LANGUAGE_CODES[vAstraLanguage]?.synthesis || "en").toLowerCase().replace("_", "-");
+  const codeBase = targetLangCode.split("-")[0];
+
+  const matchingVoicesForLang = voices.filter((v) => {
+    const vLang = v.lang.toLowerCase().replace("_", "-");
+    return vLang === targetLangCode || vLang.startsWith(codeBase);
+  });
+
+  const otherVoices = voices.filter((v) => {
+    const vLang = v.lang.toLowerCase().replace("_", "-");
+    return vLang !== targetLangCode && !vLang.startsWith(codeBase);
+  });
+
+  const activeVoiceObj = findMatchingVoice(voices, selectedVoiceURI, vAstraLanguage);
+
   return (
     <div className="flex-1 flex flex-col h-full bg-slate-50 dark:bg-slate-950 overflow-y-auto font-sans" id="settings-page">
       {/* Top Header Bar */}
@@ -269,8 +375,13 @@ export default function SettingsPage({
                   </span>
                 </h3>
               </div>
-              <span className="text-xs text-slate-400 font-mono">
-                {apiKey ? "Custom Key Active" : "Default System Key"}
+              <span className={`text-[11px] font-mono px-2.5 py-1 rounded-full flex items-center gap-1.5 transition-all ${
+                apiKey?.trim()
+                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${apiKey?.trim() ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
+                {apiKey?.trim() ? "BYOK Active (Custom Key)" : "Default System Key Active"}
               </span>
             </div>
 
@@ -343,6 +454,9 @@ export default function SettingsPage({
             onUpdateConnectors={onUpdateConnectors}
             showToast={showToast}
           />
+
+          {/* Memory Section */}
+          <MemorySection showToast={showToast} />
 
           {/* Appearance & Interface Theme Card */}
           <motion.div
@@ -565,60 +679,61 @@ export default function SettingsPage({
             </span>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-4">
             <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-              Choose the voice model used when reading aloud AI responses. Options below include available system and browser voices (male and female).
+              Choose the voice model used when reading aloud AI responses. Voices matching your active language ({vAstraLanguage || "English (India)"}) are prioritized automatically.
             </p>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3">
               <div className="flex-1 space-y-1.5">
-                <label htmlFor="settings-ai-voice-select" className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Voice Selection
-                </label>
+                <div className="flex items-center justify-between">
+                  <label htmlFor="settings-ai-voice-select" className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Voice Selection
+                  </label>
+                  {activeVoiceObj && (
+                    <span className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 font-semibold truncate max-w-[210px]">
+                      Active: {activeVoiceObj.name} [{activeVoiceObj.lang}]
+                    </span>
+                  )}
+                </div>
                 <select
                   id="settings-ai-voice-select"
                   value={selectedVoiceURI}
-                  onChange={(e) => onVoiceChange(e.target.value)}
+                  onChange={(e) => handleVoiceSelectChange(e.target.value)}
                   className="w-full text-xs bg-white dark:bg-slate-850 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer font-medium shadow-sm"
                 >
-                  <option value="default">Default System Voice (Auto)</option>
-                  {voices.length > 0 ? (
-                    voices.map((v, index) => {
-                      const name = v.name;
-                      const lowerName = name.toLowerCase();
-                      let genderTag = "";
-                      if (
-                        lowerName.includes("female") ||
-                        lowerName.includes("zira") ||
-                        lowerName.includes("samantha") ||
-                        lowerName.includes("victoria") ||
-                        lowerName.includes("karen") ||
-                        lowerName.includes("fiona") ||
-                        lowerName.includes("kyoko") ||
-                        lowerName.includes("veena") ||
-                        lowerName.includes("siri")
-                      ) {
-                        genderTag = " ♀ (Female)";
-                      } else if (
-                        lowerName.includes("male") ||
-                        lowerName.includes("david") ||
-                        lowerName.includes("alex") ||
-                        lowerName.includes("daniel") ||
-                        lowerName.includes("fred") ||
-                        lowerName.includes("george") ||
-                        lowerName.includes("rishi")
-                      ) {
-                        genderTag = " ♂ (Male)";
-                      }
-                      const optionKey = `voice-${index}-${v.voiceURI || v.name}-${v.lang}`;
-                      const optionVal = v.voiceURI || v.name;
-                      return (
-                        <option key={optionKey} value={optionVal}>
-                          {v.name} [{v.lang}]{genderTag}
-                        </option>
-                      );
-                    })
-                  ) : (
+                  <option value="default">
+                    Default System Voice (Auto - matches {vAstraLanguage || "active language"})
+                  </option>
+                  {matchingVoicesForLang.length > 0 && (
+                    <optgroup label={`Voices for ${vAstraLanguage}`}>
+                      {matchingVoicesForLang.map((v, index) => {
+                        const optionKey = `matching-voice-${index}-${v.voiceURI || v.name}-${v.lang}`;
+                        const optionVal = v.voiceURI || v.name;
+                        const genderTag = getVoiceGenderTag(v.name);
+                        return (
+                          <option key={optionKey} value={optionVal}>
+                            {v.name} [{v.lang}]{genderTag}
+                          </option>
+                        );
+                      })}
+                    </optgroup>
+                  )}
+                  {otherVoices.length > 0 && (
+                    <optgroup label="All System & Browser Voices">
+                      {otherVoices.map((v, index) => {
+                        const optionKey = `other-voice-${index}-${v.voiceURI || v.name}-${v.lang}`;
+                        const optionVal = v.voiceURI || v.name;
+                        const genderTag = getVoiceGenderTag(v.name);
+                        return (
+                          <option key={optionKey} value={optionVal}>
+                            {v.name} [{v.lang}]{genderTag}
+                          </option>
+                        );
+                      })}
+                    </optgroup>
+                  )}
+                  {voices.length === 0 && (
                     <>
                       <option value="female-system">Standard Female Voice (System)</option>
                       <option value="male-system">Standard Male Voice (System)</option>
@@ -646,6 +761,79 @@ export default function SettingsPage({
                 )}
               </button>
             </div>
+
+            {/* Pitch & Speech Rate Sliders */}
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <Sliders className="w-3.5 h-3.5 text-indigo-500" />
+                  Voice Dynamics & Tuning
+                </span>
+                {(voicePitch !== 1.0 || voiceRate !== 1.0) && (
+                  <button
+                    type="button"
+                    onClick={handleResetVoiceSettings}
+                    className="text-[11px] text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1 transition-colors cursor-pointer"
+                    title="Reset to default pitch & speed"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Reset Defaults</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Speech Rate (Speed) */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-600 dark:text-slate-400 font-medium">Speed / Rate</span>
+                    <span className="font-mono text-indigo-600 dark:text-indigo-400 font-semibold text-[11px]">
+                      {voiceRate.toFixed(2)}x
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.6"
+                    max="1.5"
+                    step="0.05"
+                    value={voiceRate}
+                    onChange={(e) => handleRateChange(parseFloat(e.target.value))}
+                    className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                    id="settings-voice-rate-slider"
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-400">
+                    <span>Slower (0.6x)</span>
+                    <span>Normal (1.0x)</span>
+                    <span>Faster (1.5x)</span>
+                  </div>
+                </div>
+
+                {/* Pitch */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-600 dark:text-slate-400 font-medium">Voice Pitch</span>
+                    <span className="font-mono text-indigo-600 dark:text-indigo-400 font-semibold text-[11px]">
+                      {voicePitch.toFixed(2)}x
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.6"
+                    max="1.4"
+                    step="0.05"
+                    value={voicePitch}
+                    onChange={(e) => handlePitchChange(parseFloat(e.target.value))}
+                    className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                    id="settings-voice-pitch-slider"
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-400">
+                    <span>Deeper (0.6x)</span>
+                    <span>Normal (1.0x)</span>
+                    <span>Higher (1.4x)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </motion.div>
 
@@ -664,40 +852,33 @@ export default function SettingsPage({
             </h3>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* V-Trans External Link */}
+          <div className="grid grid-cols-1 gap-4">
+            {/* AI Prompt Library External Link */}
             <a
-              href="https://play.google.com/store/apps/details?id=com.vastra.vtrans"
+              href="https://play.google.com/store/apps/details?id=com.aipromptlibrary.app"
               target="_blank"
               rel="noopener noreferrer"
-              className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/40 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/20 hover:border-indigo-200 dark:hover:border-indigo-800 transition-all duration-200 group text-left decoration-none block"
-              id="settings-app-vtrans-link"
+              className="p-4 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/40 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/20 hover:border-indigo-200 dark:hover:border-indigo-800 transition-all duration-200 group text-left decoration-none block"
+              id="settings-app-ai-prompt-library-link"
             >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
-                  {t("v_trans", interfaceLanguage)}
-                </span>
-                <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-500" />
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                    AI Prompt Library
+                  </span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60">
+                    Google Play
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                  <span className="text-[11px] font-medium hidden sm:inline">Get on Play Store</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </div>
               </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
-                {t("voice_translator_desc", interfaceLanguage)}
+              <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 leading-normal">
+                Discover & copy curated AI prompts for ChatGPT, Claude & more.
               </p>
             </a>
-
-            {/* Vocalix App (Coming Soon) */}
-            <div className="p-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/20 text-left">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-bold text-slate-400 dark:text-slate-500">
-                  {t("vocalix", interfaceLanguage)}
-                </span>
-                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-                  {t("coming_soon", interfaceLanguage)}
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-normal">
-                {t("malayalam_voice_desc", interfaceLanguage)}
-              </p>
-            </div>
           </div>
 
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">

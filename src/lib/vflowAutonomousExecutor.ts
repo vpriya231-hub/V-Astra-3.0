@@ -38,6 +38,14 @@ export async function executeVFlowAutonomousTask(
   let aiResponseText = "";
   let webhookLogDetails = "";
 
+  // BYOK API key support for autonomous workflows
+  const customKey = (typeof window !== "undefined" ? localStorage.getItem("v_astra_api_key") || "" : "").trim();
+  const chatHeaders: Record<string, string> = { "Content-Type": "application/json" };
+  if (customKey) {
+    chatHeaders["x-gemini-key"] = customKey;
+  }
+  console.log("Using API Key source:", customKey ? "BYOK" : "Default");
+
   if (actionType === "Webhook / API Action") {
     const targetUrl = urlMatches![0];
     logs.push(`Target API/Webhook: ${targetUrl}`);
@@ -46,7 +54,7 @@ export async function executeVFlowAutonomousTask(
     try {
       const chatRes = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: chatHeaders,
         body: JSON.stringify({
           messages: [
             {
@@ -110,7 +118,7 @@ export async function executeVFlowAutonomousTask(
     try {
       const chatRes = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: chatHeaders,
         body: JSON.stringify({
           messages: [
             {
@@ -145,7 +153,7 @@ export async function executeVFlowAutonomousTask(
     try {
       const chatRes = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: chatHeaders,
         body: JSON.stringify({
           messages: [
             {

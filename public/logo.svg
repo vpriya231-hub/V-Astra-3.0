@@ -1,38 +1,76 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="128" fill="#ffffff"/>
-  <g transform="translate(256 256)">
-    <!-- 4 Interlocking Swoops forming a diamond swirl -->
-    <path fill="#0f172a" d="
-      M -150 -30 
-      C -150 -100 -100 -150 -30 -150
-      C 40 -150 90 -100 105 -50
-      C 60 -75 10 -80 -30 -60
-      C -70 -40 -100 -10 -110 35
-      C -125 15 -140 -5 -150 -30 Z
-    "/>
-    <path fill="#0f172a" transform="rotate(90)" d="
-      M -150 -30 
-      C -150 -100 -100 -150 -30 -150
-      C 40 -150 90 -100 105 -50
-      C 60 -75 10 -80 -30 -60
-      C -70 -40 -100 -10 -110 35
-      C -125 15 -140 -5 -150 -30 Z
-    "/>
-    <path fill="#0f172a" transform="rotate(180)" d="
-      M -150 -30 
-      C -150 -100 -100 -150 -30 -150
-      C 40 -150 90 -100 105 -50
-      C 60 -75 10 -80 -30 -60
-      C -70 -40 -100 -10 -110 35
-      C -125 15 -140 -5 -150 -30 Z
-    "/>
-    <path fill="#0f172a" transform="rotate(270)" d="
-      M -150 -30 
-      C -150 -100 -100 -150 -30 -150
-      C 40 -150 90 -100 105 -50
-      C 60 -75 10 -80 -30 -60
-      C -70 -40 -100 -10 -110 35
-      C -125 15 -140 -5 -150 -30 Z
-    "/>
+  <defs>
+    <!-- Cyan to Sky Blue (Top) -->
+    <linearGradient id="blade-cyan" x1="0%" y1="0%" x2="100%" y2="80%">
+      <stop offset="0%" stop-color="#00F5FF" />
+      <stop offset="45%" stop-color="#00B4D8" />
+      <stop offset="100%" stop-color="#0077B6" />
+    </linearGradient>
+
+    <!-- Indigo / Purple (Right) -->
+    <linearGradient id="blade-purple" x1="20%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4F46E5" />
+      <stop offset="50%" stop-color="#7C3AED" />
+      <stop offset="100%" stop-color="#9333EA" />
+    </linearGradient>
+
+    <!-- Royal Blue to Violet (Bottom) -->
+    <linearGradient id="blade-royal" x1="100%" y1="20%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#6366F1" />
+      <stop offset="50%" stop-color="#2563EB" />
+      <stop offset="100%" stop-color="#1D4ED8" />
+    </linearGradient>
+
+    <!-- Deep Blue to Cyan (Left) -->
+    <linearGradient id="blade-deep" x1="0%" y1="100%" x2="80%" y2="0%">
+      <stop offset="0%" stop-color="#1E3A8A" />
+      <stop offset="40%" stop-color="#0284C7" />
+      <stop offset="100%" stop-color="#00D2FF" />
+    </linearGradient>
+  </defs>
+
+  
+
+  <g transform="translate(256, 256) scale(0.9666666666666667)">
+    <!-- 4 Interlocking ribbon swooshes creating the rounded diamond squircle swirl -->
+    <!-- Blade 1: Top Cyan -->
+    <path fill="url(#blade-cyan)" d="
+      M -155 -35
+      C -145 -125 -95 -185 -10 -190
+      C 75 -195 150 -140 185 -70
+      C 150 -75 105 -50 65 -25
+      C -15 25 -75 5 -125 -10
+      C -145 -15 -155 -25 -155 -35 Z
+    " />
+
+    <!-- Blade 2: Right Purple -->
+    <path fill="url(#blade-purple)" transform="rotate(90)" d="
+      M -155 -35
+      C -145 -125 -95 -185 -10 -190
+      C 75 -195 150 -140 185 -70
+      C 150 -75 105 -50 65 -25
+      C -15 25 -75 5 -125 -10
+      C -145 -15 -155 -25 -155 -35 Z
+    " />
+
+    <!-- Blade 3: Bottom Royal Blue -->
+    <path fill="url(#blade-royal)" transform="rotate(180)" d="
+      M -155 -35
+      C -145 -125 -95 -185 -10 -190
+      C 75 -195 150 -140 185 -70
+      C 150 -75 105 -50 65 -25
+      C -15 25 -75 5 -125 -10
+      C -145 -15 -155 -25 -155 -35 Z
+    " />
+
+    <!-- Blade 4: Left Deep Blue -->
+    <path fill="url(#blade-deep)" transform="rotate(270)" d="
+      M -155 -35
+      C -145 -125 -95 -185 -10 -190
+      C 75 -195 150 -140 185 -70
+      C 150 -75 105 -50 65 -25
+      C -15 25 -75 5 -125 -10
+      C -145 -15 -155 -25 -155 -35 Z
+    " />
   </g>
 </svg>
